@@ -8,12 +8,12 @@ import os
 from setuptools import find_packages, setup
 
 # Package metadata
-NAME = "SAM-2"
+NAME = "MonoDBH"
 VERSION = "1.0"
-DESCRIPTION = "SAM 2: Segment Anything in Images and Videos"
-URL = "https://github.com/facebookresearch/sam2"
-AUTHOR = "Meta AI"
-AUTHOR_EMAIL = "segment-anything@meta.com"
+DESCRIPTION = "MonoDBH: Monocular Tree DBH Estimation via Segmentation and Scale Reference"
+URL = "https://github.com/<your-org>/MonoDBH"
+AUTHOR = "[Authors]"
+AUTHOR_EMAIL = "[contact email]"
 LICENSE = "Apache 2.0"
 
 # Read the contents of README file
@@ -29,6 +29,11 @@ REQUIRED_PACKAGES = [
     "hydra-core>=1.3.2",
     "iopath>=0.1.10",
     "pillow>=9.4.0",
+    # MonoDBH runtime dependencies
+    "opencv-python>=4.7.0",
+    "supervision>=0.21.0",
+    "transformers>=4.40.0",
+    "pandas>=2.2.0",
 ]
 
 EXTRA_PACKAGES = {

@@ -1,11 +1,420 @@
-## Installation
+# Installation & Quick-Start Guide — MonoDBH
 
-### Requirements
+This document covers everything you need to install the environment, download model weights, prepare your images, and run the DBH estimation scripts.
 
-- Linux with Python ≥ 3.10, PyTorch ≥ 2.3.1 and [torchvision](https://github.com/pytorch/vision/) that matches the PyTorch installation. Install them together at https://pytorch.org to ensure this.
-  * Note older versions of Python or PyTorch may also work. However, the versions above are strongly recommended to provide all features such as `torch.compile`.
-- [CUDA toolkits](https://developer.nvidia.com/cuda-toolkit-archive) that match the CUDA version for your PyTorch installation. This should typically be CUDA 12.1 if you follow the default installation command.
-- If you are installing on Windows, it's strongly recommended to use [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install) with Ubuntu.
+---
+
+## Table of Contents
+
+- [System Requirements](#system-requirements)
+- [1. Clone the Repository](#1-clone-the-repository)
+- [2. Create a Conda Environment](#2-create-a-conda-environment)
+- [3. Install PyTorch with CUDA](#3-install-pytorch-with-cuda)
+- [4. Set CUDA\_HOME](#4-set-cuda_home)
+- [5. Install SAM 2](#5-install-sam-2)
+- [6. Install Grounding DINO](#6-install-grounding-dino)
+- [7. Install Remaining Dependencies](#7-install-remaining-dependencies)
+- [8. Download Model Checkpoints](#8-download-model-checkpoints)
+- [9. Prepare Your Images](#9-prepare-your-images)
+- [10. Run the DBH Scripts](#10-run-the-dbh-scripts)
+  - [Grounding DINO + SAM 2](#grounding-dino--sam-2-primary-pipeline)
+  - [Florence-2 + SAM 2](#florence-2--sam-2-alternative-pipeline)
+  - [SAM 2 Automatic](#sam-2-automatic-baseline-no-detector)
+  - [Pixel-to-cm Conversion](#pixel-to-cm-conversion)
+- [Common Installation Issues](#common-installation-issues)
+
+---
+
+## System Requirements
+
+| Requirement | Recommended version |
+|---|---|
+| OS | Linux / WSL2 on Windows (Ubuntu 20.04 or 22.04) |
+| Python | ≥ 3.10 |
+| PyTorch | ≥ 2.3.1 |
+| torchvision | ≥ 0.18.1 |
+| CUDA toolkit | 12.1 (must match your PyTorch build) |
+| GPU VRAM | ≥ 8 GB (16 GB recommended for Florence-2-large) |
+
+> **Windows users:** Native Windows is not supported for the CUDA extensions required by Grounding DINO. Use [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install).
+
+---
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/<your-org>/MonoDBH.git
+cd MonoDBH
+```
+
+---
+
+## 2. Create a Conda Environment
+
+```bash
+conda create -n monodbh python=3.10 -y
+conda activate monodbh
+```
+
+---
+
+## 3. Install PyTorch with CUDA
+
+Install PyTorch 2.3.1 with CUDA 12.1 support:
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
+Verify the installation:
+
+```bash
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+# Expected: 2.3.1+cu121  True
+```
+
+---
+
+## 4. Set CUDA\_HOME
+
+The Grounding DINO C++ / CUDA extension requires `CUDA_HOME` to be set:
+
+```bash
+export CUDA_HOME=/usr/local/cuda-12.1
+```
+
+Verify:
+
+```bash
+python -c "import torch; from torch.utils.cpp_extension import CUDA_HOME; print(torch.cuda.is_available(), CUDA_HOME)"
+# Expected: True  /usr/local/cuda-12.1
+```
+
+> If `CUDA_HOME` is not found automatically, check `nvcc --version` and adjust the path above to match.
+
+---
+
+## 5. Install SAM 2
+
+Install SAM 2 from the root of this repository:
+
+```bash
+pip install -e ".[notebooks]"
+```
+
+To skip the optional CUDA post-processing extension (safe to skip — only affects tiny mask hole-filling):
+
+```bash
+SAM2_BUILD_CUDA=0 pip install -e ".[notebooks]"
+```
+
+---
+
+## 6. Install Grounding DINO
+
+```bash
+pip install --no-build-isolation -e grounding_dino
+```
+
+> The `--no-build-isolation` flag is required because Grounding DINO's CUDA extension needs the already-installed PyTorch headers at build time.
+
+---
+
+## 7. Install Remaining Dependencies
+
+```bash
+pip install supervision transformers pandas opencv-python pillow
+```
+
+Florence-2 will be downloaded automatically on first run. To pre-cache it now:
+
+```bash
+python -c "
+from transformers import AutoProcessor, AutoModelForCausalLM
+AutoModelForCausalLM.from_pretrained('microsoft/Florence-2-large', trust_remote_code=True)
+"
+```
+
+---
+
+## 8. Download Model Checkpoints
+
+**SAM 2.1 checkpoints** (required by all three scripts):
+
+```bash
+cd checkpoints
+bash download_ckpts.sh
+cd ..
+```
+
+This downloads `sam2.1_hiera_large.pt` (~850 MB) which is the checkpoint used by all scripts.
+
+**Grounding DINO checkpoints** (required by `grounded_sam2_base.py` and the utils scripts):
+
+```bash
+cd gdino_checkpoints
+bash download_ckpts.sh
+cd ..
+```
+
+Verify the files exist:
+
+```bash
+ls checkpoints/sam2.1_hiera_large.pt
+ls gdino_checkpoints/
+```
+
+> Florence-2 weights are downloaded automatically from HuggingFace Hub — no manual step needed.
+
+---
+
+## 9. Prepare Your Images
+
+Create the input directories and place your tree images inside:
+
+```bash
+mkdir -p notebooks/data
+mkdir -p notebooks/tilted_trees
+mkdir -p notebooks/branches_data
+```
+
+| Folder | Use for |
+|---|---|
+| `notebooks/data/` | General upright tree images (primary dataset) |
+| `notebooks/tilted_trees/` | Leaning or tilted trees |
+| `notebooks/branches_data/` | Trees with heavy branching / complex scenes |
+
+**Image requirements:**
+- Format: `.jpg`, `.jpeg`, or `.png`
+- The scene should contain a tree trunk with a **human hand** held against it at breast height — the hand is the physical scale reference used for metric conversion.
+- Recommended resolution: 1080p or higher for accurate pixel measurements.
+
+---
+
+## 10. Run the DBH Scripts
+
+All scripts are run from the **root of the repository** with the conda environment active.
+
+---
+
+### Grounding DINO + SAM 2 (primary pipeline)
+
+```bash
+python grounded_sam2_base.py
+```
+
+- Reads from: `notebooks/data/`
+- Writes to: `notebooks/seg_experiment/groundingdino_outputs/`
+- Produces per-image annotated `.jpg` + `.json` sidecar with `diameter_px`, `trunk_angle_deg`, and diameter line coordinates.
+
+To change the input folder or detection prompt, edit the top of the script:
+
+```python
+input_folder = "notebooks/data/"        # ← change to your folder
+text = "tree trunk. hand"               # ← Grounding DINO class prompt (period-separated)
+```
+
+---
+
+### Florence-2 + SAM 2 (alternative pipeline)
+
+```bash
+python grounded_sam2_florence2.py
+```
+
+- Reads from: `notebooks/data/`
+- Writes to: `notebooks/seg_experiment/florence_outputs/`
+- Requires ~16 GB VRAM in float16 mode. If you hit OOM errors, switch to `Florence-2-base`:
+
+```python
+FLORENCE2_ID = "microsoft/Florence-2-base"   # line ~12 of the script
+```
+
+---
+
+### SAM 2 Automatic (baseline, no detector)
+
+```bash
+python sam2_segmentation.py
+```
+
+- Reads from: `notebooks/data/`
+- Writes to: `notebooks/seg_experiment/sam2/`
+- No detection model — assumes the **largest segmented region** is the tree trunk.
+- Outputs a green mask overlay. No diameter line is drawn in this baseline.
+
+If you hit VRAM limits, lower `points_per_side` in the script:
+
+```python
+mask_generator = SAM2AutomaticMaskGenerator(
+    model=sam2,
+    points_per_side=8,   # default is 16; reduce to save VRAM
+    ...
+)
+```
+
+---
+
+### Pixel-to-cm Conversion
+
+After running any of the segmentation scripts, use `utils/dbh_metric_converter.py` to convert the pixel diameter measurements to real-world centimetres.
+
+Prepare a CSV file with one row per image containing these columns:
+
+| Column | Description | Units |
+|---|---|---|
+| `dbh_width` | Measured trunk width in pixels (from the JSON output) | px |
+| `sensor_width` | Camera sensor width | mm |
+| `length` | Camera-to-trunk distance | cm |
+| `image_width` | Full image width in pixels | px |
+| `focal_length` | Camera focal length | mm |
+
+> Camera EXIF data (readable with `exiftool`) provides `sensor_width`, `image_width`, and `focal_length`. `length` must be measured in the field.
+
+Run the conversion:
+
+```python
+from utils.dbh_metric_converter import estimate_dbh
+
+df = estimate_dbh(
+    input_csv="measurements.csv",
+    output_csv="results_with_dbh.csv"
+)
+print(df[["dbh_width", "estimated_dbh"]])
+```
+
+The output CSV will have an `estimated_dbh` column in centimetres.
+
+---
+
+## Common Installation Issues
+
+<details>
+<summary>I got <code>ImportError: cannot import name '_C' from 'sam2'</code></summary>
+<br/>
+
+You haven't run the `pip install -e ".[notebooks]"` step, or it failed silently. Re-run it and check for errors. On some systems:
+
+```bash
+python setup.py build_ext --inplace
+```
+</details>
+
+<details>
+<summary>I got <code>MissingConfigException: Cannot find primary config 'configs/sam2.1/sam2.1_hiera_l.yaml'</code></summary>
+<br/>
+
+SAM 2 is not in your Python path. Re-run `pip install -e .` from the repo root. If it still fails:
+
+```bash
+export PYTHONPATH="/path/to/MonoDBH:${PYTHONPATH}"
+```
+</details>
+
+<details>
+<summary>I got <code>RuntimeError: Error(s) in loading state_dict for SAM2Base</code> with SAM 2.1 checkpoints</summary>
+<br/>
+
+You have an older SAM 2 installation. Reinstall cleanly:
+
+```bash
+pip uninstall -y SAM-2
+pip install -e ".[notebooks]"
+```
+</details>
+
+<details>
+<summary>My installation failed with <code>CUDA_HOME environment variable is not set</code></summary>
+<br/>
+
+Set `CUDA_HOME` explicitly (see [Step 4](#4-set-cuda_home)) and retry. Also verify with:
+
+```bash
+python -c "import torch; from torch.utils.cpp_extension import CUDA_HOME; print(CUDA_HOME)"
+```
+
+If it still fails, add `--no-build-isolation`:
+
+```bash
+pip install --no-build-isolation -e .
+```
+</details>
+
+<details>
+<summary>I got <code>undefined symbol: _ZN3c1015SmallVectorBaseIjE8grow_podEPKvmm</code></summary>
+<br/>
+
+Multiple conflicting PyTorch/CUDA versions in your environment. Use a fresh conda environment and install only one version of PyTorch (≥ 2.3.1) via pip.
+</details>
+
+<details>
+<summary>I got <code>CUDA error: no kernel image is available for execution on the device</code></summary>
+<br/>
+
+The CUDA extension was compiled for a different GPU architecture. Set the target architecture explicitly before reinstalling:
+
+```bash
+export TORCH_CUDA_ARCH_LIST="9.0 8.0 8.6 8.9 7.0 7.5 6.0"
+pip install -e ".[notebooks]"
+```
+</details>
+
+<details>
+<summary>I got <code>RuntimeError: No available kernel. Aborting execution.</code></summary>
+<br/>
+
+Flash Attention is not available on your GPU. In `sam2/modeling/sam/transformer.py`, replace:
+
+```python
+OLD_GPU, USE_FLASH_ATTN, MATH_KERNEL_ON = get_sdpa_settings()
+```
+
+with:
+
+```python
+OLD_GPU, USE_FLASH_ATTN, MATH_KERNEL_ON = True, True, True
+```
+</details>
+
+<details>
+<summary>I got <code>Error compiling objects for extension</code> (Windows / unsupported MSVC)</summary>
+<br/>
+
+Your CUDA and Visual Studio versions are incompatible. Add `-allow-unsupported-compiler` to the `nvcc` flags in `setup.py`:
+
+```python
+"nvcc": [
+    "-DCUDA_HAS_FP16=1",
+    "-D__CUDA_NO_HALF_OPERATORS__",
+    "-D__CUDA_NO_HALF_CONVERSIONS__",
+    "-D__CUDA_NO_HALF2_OPERATORS__",
+    "-allow-unsupported-compiler"
+],
+```
+
+Alternatively, using WSL2 avoids this issue entirely.
+</details>
+
+<details>
+<summary>Florence-2 runs out of memory (OOM)</summary>
+<br/>
+
+Florence-2-large requires ~16 GB VRAM in float16. Options:
+
+1. Use `Florence-2-base` instead (change `FLORENCE2_ID` in `grounded_sam2_florence2.py`).
+2. Resize your input images to a lower resolution before processing.
+3. Add `torch.cuda.empty_cache()` between images if processing a large batch.
+</details>
+
+<details>
+<summary>No detections found for my images</summary>
+<br/>
+
+- For Grounding DINO: lower the detection threshold from `0.25` to `0.15` in `grounded_sam2_base.py`.
+- Ensure the text prompt matches what is visible: `"tree trunk. hand"` — the period separates classes in Grounding DINO syntax.
+- Check that the morphological close preprocessing step isn't destroying fine features (reduce kernel from `5×5` to `3×3` for high-resolution images).
+- For SAM 2 automatic: the largest segment may not be the trunk if background objects are large — this is a known limitation of that baseline.
+</details>
 
 Then, install SAM 2 from the root of this repository via
 ```bash
