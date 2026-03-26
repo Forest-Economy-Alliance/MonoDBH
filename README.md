@@ -22,9 +22,10 @@
   - [Running Florence-2 + SAM 2](#running-florence-2--sam-2)
   - [Running SAM 2 Automatic](#running-sam-2-automatic)
   - [Converting Pixel DBH to Centimetres](#converting-pixel-dbh-to-centimetres)
+- [Data Collection Procedure](#data-collection-procedure)
 - [Data and Folder Structure](#data-and-folder-structure)
 - [Output Format](#output-format)
-- [Reproducibility Notes](#reproducibility-notes)
+- [Reproducibility Notes](#reproducibility-notes) — see also [docs/reproducibility_notes.md](docs/reproducibility_notes.md)
 - [Third-Party Credits and Licences](#third-party-credits-and-licences)
 - [Licence](#licence)
 - [Code of Conduct](#code-of-conduct)
@@ -346,6 +347,29 @@ Camera parameters (`sensor_width`, `focal_length`) can be found in your camera's
 
 ---
 
+## Data Collection Procedure
+
+### Field Protocol
+
+For each tree in the study the following steps were performed in the field:
+
+1. **GPS location** — recorded the geographic coordinates of the tree.
+2. **Ground-truth DBH** — measured the trunk diameter at breast height (1.3 m above ground) with a diameter tape and recorded it as the reference value.
+3. **Image capture** — photographed the tree trunk straight-on. One hand was placed flat against the trunk at the time of capture, with the known hand length serving as an in-image scale reference for depth estimation. **Using a hand is not required for your own images** — any known reference object works, or you can skip the reference entirely and supply the camera-to-trunk distance directly (see the note below).
+4. **Camera-to-trunk distance** — recorded the distance from the camera lens to the trunk surface in centimetres. This value (`length`) is a required input to the pixel-to-cm conversion formula; it does **not** need to be derived from the image.
+
+> **Note for custom data:** You do not need to place your hand in the image. What is essential is that you know the physical distance between the camera and the trunk at the moment of capture. This can be measured with a tape measure, laser rangefinder, or any other method. Record it alongside the image filename in your field CSV so the conversion notebook can use it.
+
+### Dataset Statistics
+
+| Property | Value |
+|---|---|
+| Total images | 978 |
+| Devices used | 5 |
+| Collection sites | Hyderabad & West Bengal, India |
+
+---
+
 ## Data and Folder Structure
 
 ```
@@ -429,16 +453,23 @@ Each processed image produces:
 
 ## Reproducibility Notes
 
-This code accompanies a journal paper. The following points ensure full reproducibility:
+This code accompanies a journal paper.
 
-- **Model versions:** SAM 2.1 (`sam2.1_hiera_large`), Grounding DINO Tiny (`IDEA-Research/grounding-dino-tiny`), Florence-2-large (`microsoft/Florence-2-large`).
-- **Detection threshold:** `0.25` for Grounding DINO; Florence-2 OVD does not expose a threshold.
-- **NMS IoU threshold:** `0.2` (aggressive suppression to prevent duplicate trunk segments).
-- **Connected-component filter:** only the single largest connected component of each trunk mask is kept.
-- **PCA diameter measurement:** the diameter line is drawn perpendicular to the trunk's principal axis at the vertical centre of the bounding box, averaged over a ±5 pixel row band.
-- **Pixel-to-cm conversion:** uses the standard pinhole camera formula; camera intrinsics must be recorded per image for accurate results.
-- **Random seed:** SAM 2 automatic mask generation uses `points_per_side=16`; no additional random seeds are set because all other steps are deterministic.
-- **Environment:** Python 3.10, PyTorch 2.3.1, CUDA 12.1. Full dependency list available via `pip freeze` after following the installation steps above.
+> **Full end-to-end reproducibility documentation is in [docs/reproducibility_notes.md](docs/reproducibility_notes.md).**
+>
+> That document covers: the field data collection protocol, which script to use for each tree type (upright / tilted / branchy), how PCA corrects for trunk tilt, how NMS handles complex scenes, the complete JSON output schema, how to extract pixel DBH widths from JSON, the structure of the raw field measurement CSV (`dbh_csv.csv`), the merge workflow in the notebook, the metric conversion formula with a worked numerical example, and a full troubleshooting section.
+
+Key parameter summary for quick reference:
+
+| Parameter | Value | Where set |
+|---|---|---|
+| Grounding DINO detection threshold | `0.25` | `grounded_sam2_base.py` |
+| NMS IoU threshold | `0.2` | all detection-based scripts |
+| SAM 2 checkpoint | `sam2.1_hiera_large` | all scripts |
+| SAM 2 automatic `points_per_side` | `16` | `sam2_segmentation.py` |
+| PCA row band for start point | ±5 px around bounding box midpoint | all detection-based scripts |
+| Connected-component filter | largest component only per trunk mask | all detection-based scripts |
+| Python / PyTorch / CUDA | 3.10 / 2.3.1 / 12.1 | — |
 
 ---
 
