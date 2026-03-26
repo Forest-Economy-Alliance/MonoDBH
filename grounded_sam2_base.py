@@ -286,7 +286,7 @@ for filename in os.listdir(input_folder):
     filtered_results.extend(hands)
  
     # Save image AFTER drawing line
-    output_path = os.path.join(output_folder, f"pca_{filename}")
+    output_path = os.path.join(output_folder, f"{filename}")
     cv2.imwrite(output_path, annotated)
     print(f"✅ Processed {filename} → {output_path}")
  

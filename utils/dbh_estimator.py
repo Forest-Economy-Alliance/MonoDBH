@@ -48,10 +48,10 @@ IMAGE_FOLDER  = "../notebooks/data"
 # CSV with per-image field measurements.
 # Required columns: photo, length (cm), sensor_width (mm), focal_length (mm)
 # Optional column : actual_dbh (cm) — enables MAE validation in the summary
-METADATA_CSV  = "dbh_csv.csv"
+METADATA_CSV  = "../notebooks/metadata.csv"
 
 # Path for the output CSV with estimated DBH values.
-OUTPUT_CSV    = "estimated_dbh.csv"
+OUTPUT_CSV    = "../notebooks/estimated_dbh.csv"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -154,11 +154,6 @@ def append_image_dimensions(pixel_df: pd.DataFrame, image_folder: str) -> pd.Dat
 # ──────────────────────────────────────────────────────────────────────────────
 
 def merge_with_metadata(pixel_df: pd.DataFrame, metadata_csv: str) -> pd.DataFrame:
-    """
-    Left-join field metadata onto the pixel measurements on the ``photo`` column.
-    Rows in the metadata that have no matching segmentation output are reported
-    and excluded from the final result.
-    """
     field_df = pd.read_csv(metadata_csv)
 
     required = {'photo', 'length', 'sensor_width', 'focal_length'}
@@ -169,6 +164,15 @@ def merge_with_metadata(pixel_df: pd.DataFrame, metadata_csv: str) -> pd.DataFra
             f'       Found columns: {list(field_df.columns)}'
         )
 
+    # Strip unit suffixes from columns that may contain strings like "5.49 mm"
+    for col in ('focal_length', 'sensor_width'):
+        if field_df[col].dtype == object:
+            field_df[col] = (
+                field_df[col]
+                .astype(str)
+                .str.replace(r'[^\d.]', '', regex=True)  # remove non-numeric chars
+            )
+            field_df[col] = pd.to_numeric(field_df[col], errors='coerce')
     merged = pd.merge(
         field_df,
         pixel_df,
@@ -193,8 +197,14 @@ def merge_with_metadata(pixel_df: pd.DataFrame, metadata_csv: str) -> pd.DataFra
         f'Merged {len(matched)} matched rows '
         f'({len(unmatched)} unmatched excluded).'
     )
-    return matched
 
+    # Debug: Check for missing values in required columns
+    print("DEBUG: Merged DataFrame:")
+    print(matched.head())
+    print("DEBUG: Missing values in required columns:")
+    print(matched[['dbh_width', 'sensor_width', 'image_width', 'focal_length']].isnull().sum())
+
+    return matched
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Step 4 — Convert pixel DBH to centimetres
@@ -207,10 +217,21 @@ def estimate_dbh(df: pd.DataFrame) -> pd.DataFrame:
         W_mm = (dbh_width * sensor_width * D_mm) / (image_width * focal_length)
         DBH_cm = W_mm / 10
 
-    where D_mm = length * 10  (length is stored in cm in the metadata CSV).
+    where D_mm = length * 1000  (length is stored in METRES in the metadata CSV).
     """
     df = df.copy()
-    D_mm = df['length'] * 10                                      # cm → mm
+
+    numeric_columns = ['dbh_width', 'sensor_width', 'image_width', 'focal_length']
+    for col in numeric_columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    invalid_rows = df[df[numeric_columns].isnull().any(axis=1)]
+    if not invalid_rows.empty:
+        print("WARNING: Rows with invalid or missing numeric values will be excluded:")
+        print(invalid_rows[['photo'] + numeric_columns])
+        df = df.dropna(subset=numeric_columns)
+
+    D_mm = df['length'] * 1000                                    # metres → mm
     W_mm = (
         df['dbh_width'] * df['sensor_width'] * D_mm
     ) / (df['image_width'] * df['focal_length'])

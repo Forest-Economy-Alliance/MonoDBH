@@ -3,3 +3,5 @@
 
 /gdino_checkpoints/*
 !/gdino_checkpoints/.gitkeep
+
+.venv
