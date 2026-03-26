@@ -11,8 +11,8 @@ from setuptools import find_packages, setup
 NAME = "MonoDBH"
 VERSION = "1.0"
 DESCRIPTION = "MonoDBH: Monocular Tree DBH Estimation via Segmentation and Scale Reference"
-URL = "https://github.com/<your-org>/MonoDBH"
-AUTHOR = "[Authors]"
+URL = "https://github.com/Forest-Economy-Alliance/MonoDBH"
+AUTHOR = "[Ashwini Chhatre, Abhijeet Parmar, Nitesh Saini, Mayank Jain]"
 AUTHOR_EMAIL = "[contact email]"
 LICENSE = "Apache 2.0"
 

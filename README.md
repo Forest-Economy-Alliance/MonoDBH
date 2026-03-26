@@ -187,7 +187,7 @@ print(df[["dbh_width", "estimated_dbh"]])
 **1. Clone this repository**
 
 ```bash
-git clone https://github.com/<your-org>/MonoDBH.git
+git clone https://github.com/Forest-Economy-Alliance/MonoDBH
 cd MonoDBH
 ```
 
