@@ -1,0 +1,5 @@
+/checkpoints/*
+!/checkpoints/.gitkeep
+
+/gdino_checkpoints/*
+!/gdino_checkpoints/.gitkeep
