@@ -13,11 +13,14 @@ OUTPUT_FOLDER = "notebooks/seg_experiment/sam2/"
 
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# ── Fix CUDA memory fragmentation ────────────────────────────────────────────
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
 # ── 2. Load model ONCE ───────────────────────────────────────────────────────
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Reduce CUDA memory fragmentation (ignored on CPU)
+if torch.cuda.is_available():
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+else:
+    print("⚠  No CUDA GPU detected — running on CPU. Inference will be significantly slower.")
 sam2   = build_sam2(MODEL_CFG, CHECKPOINT, device=device)
 
 mask_generator = SAM2AutomaticMaskGenerator(
@@ -61,12 +64,15 @@ for idx, filename in enumerate(image_files):
 
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
+    # bfloat16 autocast is supported on both CUDA and CPU; use float32 on CPU for safety
+    autocast_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     try:
-        with torch.inference_mode(), torch.autocast(device, dtype=torch.bfloat16):
+        with torch.inference_mode(), torch.autocast(device, dtype=autocast_dtype):
             masks = mask_generator.generate(image_rgb)
-    except torch.OutOfMemoryError:
+    except (torch.OutOfMemoryError, MemoryError):
         print(f"  ⚠ OOM on {filename}, clearing cache and skipping.")
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         continue
 
     if not masks:
@@ -89,6 +95,7 @@ for idx, filename in enumerate(image_files):
     print(f"  ✓ Saved → {output_path}")
 
     # ── Clear GPU cache after each image ─────────────────────────────────────
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 print("\nDone! All images processed.")

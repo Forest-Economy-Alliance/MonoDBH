@@ -33,8 +33,10 @@ This document covers everything you need to install the environment, download mo
 | Python | ≥ 3.10 |
 | PyTorch | ≥ 2.3.1 |
 | torchvision | ≥ 0.18.1 |
-| CUDA toolkit | 12.1 (must match your PyTorch build) |
-| GPU VRAM | ≥ 8 GB (16 GB recommended for Florence-2-large) |
+| CUDA toolkit | 12.1 (must match your PyTorch build) — **optional**, CPU fallback is supported |
+| GPU VRAM | ≥ 8 GB (16 GB recommended for Florence-2-large); not required for CPU |
+
+> **CPU-only (no GPU):** All scripts fall back to CPU automatically. Inference is significantly slower — several minutes per image. Skip the `CUDA_HOME` step and the Grounding DINO C++ extension build when going CPU-only (use `SAM2_BUILD_CUDA=0 pip install -e ".[notebooks]"`).
 
 > **Windows users:** Native Windows is not supported for the CUDA extensions required by Grounding DINO. Use [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install).
 

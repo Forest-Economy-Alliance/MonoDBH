@@ -175,8 +175,10 @@ print(df[["dbh_width", "estimated_dbh"]])
 | Python | ≥ 3.10 |
 | PyTorch | ≥ 2.3.1 |
 | torchvision | ≥ 0.18.1 |
-| CUDA toolkit | 12.1 (must match PyTorch build) |
-| GPU VRAM | ≥ 8 GB recommended (16 GB for Florence-2-large) |
+| CUDA toolkit | 12.1 (must match PyTorch build) — **optional**, CPU-only also works |
+| GPU VRAM | ≥ 8 GB recommended (16 GB for Florence-2-large); not required for CPU |
+
+> **CPU-only (no GPU):** All three scripts detect the device automatically via `torch.cuda.is_available()` and fall back to CPU if no GPU is present. Inference is functional but **significantly slower** — expect several minutes per image on CPU compared to seconds on GPU. SAM 2 automatic mask generation is the slowest on CPU; consider reducing `points_per_side` to `8` when running without a GPU.
 
 > **Windows users:** Use [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install). Native Windows is not supported for the CUDA extensions required by Grounding DINO.
 

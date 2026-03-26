@@ -11,10 +11,15 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from transformers import AutoProcessor, AutoModelForCausalLM
 
 # ── 1. Config ─────────────────────────────────────────────────────────────────
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
 device      = "cuda" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+# Reduce CUDA memory fragmentation (ignored on CPU)
+if torch.cuda.is_available():
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+if device == "cpu":
+    print("⚠  No CUDA GPU detected — running on CPU. Inference will be significantly slower.")
 
 SAM2_CHECKPOINT = "./checkpoints/sam2.1_hiera_large.pt"
 SAM2_CONFIG     = "configs/sam2.1/sam2.1_hiera_l.yaml"
@@ -48,7 +53,7 @@ def run_florence2_ovd(image_pil, text_prompt):
     prompt = task + text_prompt
     inputs = florence2_processor(
         text=prompt, images=image_pil, return_tensors="pt"
-    ).to(device, torch.float16)
+    ).to(device, torch_dtype)
 
     with torch.no_grad():
         generated_ids = florence2_model.generate(
@@ -133,18 +138,21 @@ for filename in image_files:
         continue
 
     # ── SAM2 segmentation ─────────────────────────────────────────────────────
+    # bfloat16 autocast is supported on both CUDA and CPU (PyTorch >= 1.10)
+    autocast_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     try:
         image_predictor.set_image(np.array(image_proc))
-        with torch.inference_mode(), torch.autocast(device, dtype=torch.bfloat16):
+        with torch.inference_mode(), torch.autocast(device, dtype=autocast_dtype):
             masks, sam_scores, logits = image_predictor.predict(
                 point_coords=None,
                 point_labels=None,
                 box=input_boxes,
                 multimask_output=False,
             )
-    except torch.OutOfMemoryError:
+    except (torch.OutOfMemoryError, MemoryError):
         print(f"  ⚠ OOM on {filename}, skipping.")
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         continue
 
     # Fix mask dims
@@ -293,6 +301,7 @@ for filename in image_files:
     print(f"  ✅ Saved → {output_img_path}")
     print(f"  📑 Saved → {output_json_path}")
 
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 print("\n✅ Done! All images processed.")
