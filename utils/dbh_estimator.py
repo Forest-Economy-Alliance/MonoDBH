@@ -3,11 +3,9 @@ dbh_estimator.py — Convert segmentation JSON outputs to estimated DBH (cm).
 
 Usage
 -----
-    python dbh_estimator.py \\
-        --json_folder  <path/to/segmentation/json/outputs> \\
-        --image_folder <path/to/input/images> \\
-        --metadata     <path/to/field_metadata.csv> \\
-        --output       <path/to/estimated_dbh.csv>
+    Edit the path variables in the CONFIG section below, then run:
+
+        python utils/dbh_estimator.py
 
 Required columns in the metadata CSV
 -------------------------------------
@@ -26,13 +24,34 @@ Output CSV columns
     If actual_dbh is present: error_cm, error_pct are also appended.
 """
 
-import argparse
 import json
 import os
 import sys
 
 from PIL import Image
 import pandas as pd
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONFIG — edit these paths before running
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Folder containing JSON sidecar files from the segmentation script.
+# Use the output folder that matches the pipeline you ran:
+#   Grounding DINO + SAM 2  ->  "../notebooks/seg_experiment/groundingdino_outputs"
+#   Florence-2  + SAM 2     ->  "../notebooks/seg_experiment/florence_outputs"
+#   SAM 2 automatic         ->  "../notebooks/seg_experiment/sam2"
+JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"
+
+# Folder containing the original input images (filenames must match JSON names).
+IMAGE_FOLDER  = "../notebooks/data"
+
+# CSV with per-image field measurements.
+# Required columns: photo, length (cm), sensor_width (mm), focal_length (mm)
+# Optional column : actual_dbh (cm) — enables MAE validation in the summary
+METADATA_CSV  = "dbh_csv.csv"
+
+# Path for the output CSV with estimated DBH values.
+OUTPUT_CSV    = "estimated_dbh.csv"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -219,65 +238,40 @@ def print_summary(df: pd.DataFrame) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CLI entry point
+# Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Estimate tree DBH (cm) from segmentation JSON outputs.',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
-    parser.add_argument(
-        '--json_folder', required=True,
-        help='Folder containing JSON sidecar files from the segmentation script.',
-    )
-    parser.add_argument(
-        '--image_folder', required=True,
-        help='Folder containing the original input images.',
-    )
-    parser.add_argument(
-        '--metadata', required=True,
-        help='CSV with per-image camera metadata (photo, length, sensor_width, focal_length).',
-    )
-    parser.add_argument(
-        '--output', required=True,
-        help='Path for the output CSV with estimated DBH.',
-    )
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
-
     # Validate inputs
-    if not os.path.isdir(args.json_folder):
-        sys.exit(f'ERROR: json_folder does not exist: {args.json_folder}')
-    if not os.path.isdir(args.image_folder):
-        sys.exit(f'ERROR: image_folder does not exist: {args.image_folder}')
-    if not os.path.isfile(args.metadata):
-        sys.exit(f'ERROR: metadata file does not exist: {args.metadata}')
+    if not os.path.isdir(JSON_FOLDER):
+        sys.exit(f'ERROR: JSON_FOLDER does not exist: {JSON_FOLDER}')
+    if not os.path.isdir(IMAGE_FOLDER):
+        sys.exit(f'ERROR: IMAGE_FOLDER does not exist: {IMAGE_FOLDER}')
+    if not os.path.isfile(METADATA_CSV):
+        sys.exit(f'ERROR: METADATA_CSV does not exist: {METADATA_CSV}')
 
-    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    output_dir = os.path.dirname(os.path.abspath(OUTPUT_CSV))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     print('─' * 60)
     print('Step 1 — Extracting pixel DBH widths from JSON files...')
-    pixel_df = extract_pixel_widths(args.json_folder)
+    pixel_df = extract_pixel_widths(JSON_FOLDER)
 
     print('─' * 60)
     print('Step 2 — Reading image dimensions...')
-    pixel_df = append_image_dimensions(pixel_df, args.image_folder)
+    pixel_df = append_image_dimensions(pixel_df, IMAGE_FOLDER)
 
     print('─' * 60)
     print('Step 3 — Merging with field metadata...')
-    merged_df = merge_with_metadata(pixel_df, args.metadata)
+    merged_df = merge_with_metadata(pixel_df, METADATA_CSV)
 
     print('─' * 60)
     print('Step 4 — Computing estimated DBH...')
     result_df = estimate_dbh(merged_df)
 
-    result_df.to_csv(args.output, index=False)
-    print(f'Saved {len(result_df)} rows -> {args.output}')
+    result_df.to_csv(OUTPUT_CSV, index=False)
+    print(f'Saved {len(result_df)} rows -> {OUTPUT_CSV}')
 
     print('─' * 60)
     print_summary(result_df)
