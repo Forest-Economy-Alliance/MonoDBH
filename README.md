@@ -57,59 +57,44 @@ Three detection back-ends are provided and compared:
 ---
 ## Results
 
-The three panels below illustrate the end-to-end output for a single tree image.
+The panels below illustrate the end-to-end output for a single tree image.
+### Raw Input → Segmentation + DBH
 
----
-
-### Step 1 — Raw input
-
-> Place your raw input photograph here.
-> Suggested filename: `docs/results/01_raw_input.jpg`
-
-<!-- Add image below -->
-
----
-
-### Step 2 — Segmentation masks
-
-The detector (Grounding DINO or Florence-2) localises the tree trunk and hand. SAM 2 then produces pixel-accurate instance masks for each detected region. The trunk mask is colour-filled and the hand mask is outlined.
-
-> Place the annotated segmentation output here.
-> Suggested filename: `docs/results/02_segmentation.jpg`
-
-<!-- Add image below -->
-
----
-
-### Step 3 — DBH diameter line
-
-PCA finds the principal axis of the trunk mask. A diameter line is drawn **perpendicular to that axis** at mid-height (shown in green). The pixel length of this line is the raw DBH measurement that is later converted to centimetres.
-
-> Place the final annotated output (the `pca_*.jpg` file produced by the script) here.
-> Suggested filename: `docs/results/03_dbh_line.jpg`
-
-<!-- Add image below -->
-
----
-
-### Side-by-side comparison (optional)
-
-If you want to show all three pipeline stages in one row, you can use an HTML table for fine-grained layout control:
-
-```html
-<table>
+<table align="center">
   <tr>
-    <th>Raw input</th>
-    <th>Segmentation</th>
-    <th>DBH line</th>
+    <td align="center" valign="middle">
+      <img src="docs/results/01_raw_input.jpg" width="300"/>
+    </td>
+    <td align="center" valign="middle" style="font-size: 28px; padding: 0 20px;">
+      ➡️
+    </td>
+    <td align="center" valign="middle">
+      <img src="docs/results/02_segmentation.jpg" width="300"/>
+    </td>
   </tr>
   <tr>
-    <td><img src="docs/results/01_raw_input.jpg"     width="280"/></td>
-    <td><img src="docs/results/02_segmentation.jpg" width="280"/></td>
-    <td><img src="docs/results/03_dbh_line.jpg"     width="280"/></td>
+    <td align="center"><b>Raw Input</b></td>
+    <td></td>
+    <td align="center"><b>Segmentation + DBH</b></td>
   </tr>
 </table>
-```
+
+---
+
+### Description
+
+The detector (Grounding DINO or Florence-2) localises the tree trunk and hand.  
+SAM 2 then produces pixel-accurate instance masks for each detected region.
+
+- The trunk mask is colour-filled  
+- The hand mask is outlined  
+- A DBH diameter line is estimated from the segmentation  
+
+---
+ 
+
+---
+ 
 
 > To activate the table view: add your images to `docs/results/`, uncomment the block above (remove the ` ``` ` fences), and delete the individual Step 1–3 panels above if you prefer the compact layout.
 
