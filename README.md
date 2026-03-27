@@ -7,6 +7,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Results](#results)
 - [Pipeline Architecture](#pipeline-architecture)
   - [Approach 1 — Grounding DINO + SAM 2](#approach-1--grounding-dino--sam-2)
   - [Approach 2 — Florence-2 + SAM 2](#approach-2--florence-2--sam-2)
@@ -54,7 +55,65 @@ Three detection back-ends are provided and compared:
 | `sam2_segmentation.py` | — (automatic) | SAM 2 | Baseline: largest segment = trunk |
 
 ---
+## Results
 
+The three panels below illustrate the end-to-end output for a single tree image.
+
+---
+
+### Step 1 — Raw input
+
+> Place your raw input photograph here.
+> Suggested filename: `docs/results/01_raw_input.jpg`
+
+<!-- Add image below -->
+
+---
+
+### Step 2 — Segmentation masks
+
+The detector (Grounding DINO or Florence-2) localises the tree trunk and hand. SAM 2 then produces pixel-accurate instance masks for each detected region. The trunk mask is colour-filled and the hand mask is outlined.
+
+> Place the annotated segmentation output here.
+> Suggested filename: `docs/results/02_segmentation.jpg`
+
+<!-- Add image below -->
+
+---
+
+### Step 3 — DBH diameter line
+
+PCA finds the principal axis of the trunk mask. A diameter line is drawn **perpendicular to that axis** at mid-height (shown in green). The pixel length of this line is the raw DBH measurement that is later converted to centimetres.
+
+> Place the final annotated output (the `pca_*.jpg` file produced by the script) here.
+> Suggested filename: `docs/results/03_dbh_line.jpg`
+
+<!-- Add image below -->
+
+---
+
+### Side-by-side comparison (optional)
+
+If you want to show all three pipeline stages in one row, you can use an HTML table for fine-grained layout control:
+
+```html
+<table>
+  <tr>
+    <th>Raw input</th>
+    <th>Segmentation</th>
+    <th>DBH line</th>
+  </tr>
+  <tr>
+    <td><img src="docs/results/01_raw_input.jpg"     width="280"/></td>
+    <td><img src="docs/results/02_segmentation.jpg" width="280"/></td>
+    <td><img src="docs/results/03_dbh_line.jpg"     width="280"/></td>
+  </tr>
+</table>
+```
+
+> To activate the table view: add your images to `docs/results/`, uncomment the block above (remove the ` ``` ` fences), and delete the individual Step 1–3 panels above if you prefer the compact layout.
+
+---
 ## Pipeline Architecture
 
 ### Approach 1 — Grounding DINO + SAM 2
