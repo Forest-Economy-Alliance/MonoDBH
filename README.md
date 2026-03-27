@@ -128,12 +128,7 @@ SAM 2 then produces pixel-accurate instance masks for each detected region.
 - The hand mask is outlined
 - A DBH diameter line is estimated from the segmentation
 
----
-
----
-
-> To activate the table view: add your images to `docs/results/`, uncomment the block above (remove the ` ``` ` fences), and delete the individual Step 1–3 panels above if you prefer the compact layout.
-
+ 
 ---
 
 ## Pipeline Architecture
