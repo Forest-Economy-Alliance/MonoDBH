@@ -17,7 +17,7 @@
 - [Installation](#installation)
   - [Docker (Recommended)](#docker-recommended)
   - [Virtual Environment — DBH Estimator Only](#virtual-environment--dbh-estimator-only)
-  - [Prerequisites](#prerequisites) *(manual / conda)*
+  - [Prerequisites](#prerequisites) _(manual / conda)_
   - [Step-by-step Setup](#step-by-step-setup)
   - [Download Checkpoints](#download-checkpoints)
 - [Usage](#usage)
@@ -26,6 +26,7 @@
   - [Running SAM 2 Automatic](#running-sam-2-automatic)
   - [Converting Pixel DBH to Centimetres](#converting-pixel-dbh-to-centimetres)
 - [Data Collection Procedure](#data-collection-procedure)
+- [Data Availability](#data-availability)
 - [Data and Folder Structure](#data-and-folder-structure)
 - [Output Format](#output-format)
 - [Reproducibility Notes](#reproducibility-notes) — see also [docs/reproducibility_notes.md](docs/reproducibility_notes.md)
@@ -48,16 +49,18 @@
 
 Three detection back-ends are provided and compared:
 
-| Script | Detector | Segmentor | Notes |
-|---|---|---|---|
-| `grounded_sam2_base.py` | Grounding DINO | SAM 2 | Primary pipeline |
-| `grounded_sam2_florence2.py` | Florence-2 | SAM 2 | Alternative pipeline |
-| `sam2_segmentation.py` | — (automatic) | SAM 2 | Baseline: largest segment = trunk |
+| Script                       | Detector       | Segmentor | Notes                             |
+| ---------------------------- | -------------- | --------- | --------------------------------- |
+| `grounded_sam2_base.py`      | Grounding DINO | SAM 2     | Primary pipeline                  |
+| `grounded_sam2_florence2.py` | Florence-2     | SAM 2     | Alternative pipeline              |
+| `sam2_segmentation.py`       | — (automatic)  | SAM 2     | Baseline: largest segment = trunk |
 
 ---
+
 ## Results
 
 The panels below illustrate the end-to-end output for a single tree image.
+
 ### Raw Input → Segmentation + DBH
 
 <table align="center">
@@ -79,26 +82,60 @@ The panels below illustrate the end-to-end output for a single tree image.
   </tr>
 </table>
 
----
+### Dataset & Accuracy Summary
+
+The validation set covers **978 images** captured across 5 devices at two collection sites (Hyderabad & West Bengal, India).
+
+#### DBH Distribution
+
+| Statistic | Actual DBH (cm) | Estimated DBH (cm) |
+|-----------|-----------------|-------------------|
+| Min       | 2.55            | 0.0               |
+| Max       | 70.44           | 58.60             |
+| Mean      | ~18.5           | ~18.9             |
+| Median    | ~15.3           | ~16.2             |
+
+> Entries with `estimated_dbh = 0.0` indicate images where the segmentation returned a zero-width trunk (detection failure); these are excluded from error metrics.
+
+#### Accuracy Metrics (Grounding DINO + SAM 2)
+
+| Metric | Value |
+|--------|-------|
+| **MAE** (Mean Absolute Error) | **4.22 cm** |
+| **MAPE** (Mean Absolute % Error) | **23.00 %** |
+| Images evaluated | 978 |
+| Detection failures (dbh = 0) | ~8 |
+
+#### Devices Used
+
+| Device | Focal Length | Sensor Width |
+|--------|-------------|-------------|
+| OnePlus Nord CE3 5G | 5.59 mm | 8.192 mm |
+| OnePlus Nord 2T 5G | 5.59 mm | 8.192 mm |
+| realme 6 | 5.49 mm | 7.424 mm |
+| realme 7 | 5.58 mm | 7.398 mm |
+| realme 9 5G SE | 4.71 mm | 6.4 mm |
+
+> The 23% MAPE is largely driven by small-diameter trees (DBH < 10 cm) where small pixel errors translate to large relative errors. For trees with DBH > 15 cm the relative error is substantially lower.
+
 
 ### Description
 
 The detector (Grounding DINO or Florence-2) localises the tree trunk and hand.  
 SAM 2 then produces pixel-accurate instance masks for each detected region.
 
-- The trunk mask is colour-filled  
-- The hand mask is outlined  
-- A DBH diameter line is estimated from the segmentation  
+- The trunk mask is colour-filled
+- The hand mask is outlined
+- A DBH diameter line is estimated from the segmentation
 
 ---
- 
 
 ---
- 
 
 > To activate the table view: add your images to `docs/results/`, uncomment the block above (remove the ` ``` ` fences), and delete the individual Step 1–3 panels above if you prefer the compact layout.
 
 ---
+
 ## Pipeline Architecture
 
 ### Approach 1 — Grounding DINO + SAM 2
@@ -134,6 +171,7 @@ JSON + annotated image output
 ```
 
 **Key parameters:**
+
 - Detection threshold: `0.25`
 - NMS IoU threshold: `0.2`
 - SAM 2 checkpoint: `sam2.1_hiera_large`
@@ -177,13 +215,13 @@ $$W_{\text{mm}} = \frac{n \cdot S \cdot D_{\text{mm}}}{N \cdot f}$$
 
 $$\text{DBH}_{\text{cm}} = \frac{W_{\text{mm}}}{10}$$
 
-| Symbol | Variable name in CSV | Description |
-|---|---|---|
-| $n$ | `dbh_width` | Measured trunk width in pixels |
-| $S$ | `sensor_width` | Camera sensor width in mm |
-| $D_{\text{mm}}$ | `length` (×10) | Camera-to-subject distance in mm (`length` column is in cm) |
-| $N$ | `image_width` | Full image width in pixels |
-| $f$ | `focal_length` | Camera focal length in mm |
+| Symbol          | Variable name in CSV | Description                                                 |
+| --------------- | -------------------- | ----------------------------------------------------------- |
+| $n$             | `dbh_width_pixels`          | Measured trunk width in pixels                              |
+| $S$             | `sensor_width_mm`       | Camera sensor width in mm                                   |
+| $D_{\text{mm}}$ | `arm_length_cm` (×10)       | Camera-to-subject distance in mm (`length` column is in cm) |
+| $N$             | `image_width_pixels`        | Full image width in pixels                                  |
+| $f$             | `focal_length`       | Camera focal length in mm                                   |
 
 **Usage:** Edit the four path variables at the top of `utils/dbh_estimator.py` and run:
 
@@ -198,25 +236,25 @@ OUTPUT_CSV    = "estimated_dbh.csv"
 python utils/dbh_estimator.py
 ```
 
-Camera parameters (`sensor_width`, `focal_length`) can be found in your camera's EXIF data or specification sheet. `length` is the measured distance from the camera to the trunk in centimetres. If `actual_dbh` is included in the metadata CSV, the script also prints mean absolute error in cm and %.
+Camera parameters (`sensor_width_mm`, `focal_length`) can be found in your camera's EXIF data or specification sheet. `arm_length_cm` is the measured distance from the camera to the trunk in centimetres. If `field_measured_dbh_cm` is included in the metadata CSV, the script also prints mean absolute error in cm and %.
 
 ---
 
 ## Utility Modules
 
-| File | Description |
-|---|---|
-| `utils/dbh_estimator.py` | **All-in-one post-processing script**: extracts pixel DBH from JSON, reads image dimensions, merges with field metadata, applies pinhole formula, outputs `estimated_dbh.csv` |
-| `utils/dbh_metric_converter.py` | Low-level pixel-to-cm conversion function (used internally by `dbh_estimator.py`) |
-| `utils/PCA_Implementation.py` | Standalone PCA experiment on tilted tree images (GroundingDINO + SAM 2, largest trunk only) |
-| `utils/NMS_Technique.py` | Standalone NMS experiment on branchy tree images (all detected trunks) |
-| `utils/mask_dictionary_model.py` | `MaskDictionaryModel` / `ObjectInfo` dataclasses for multi-frame mask tracking with IoU-based ID assignment |
-| `utils/supervision_utils.py` | Custom colour map for `supervision` annotation |
-| `utils/track_utils.py` | Tracking utilities for video use cases |
-| `utils/video_utils.py` | Video frame I/O helpers |
-| `utils/common_utils.py` | Shared utility functions |
-| `utils/groudingdino_florence_comparison_generator.py` | Side-by-side output comparison between GroundingDINO and Florence-2 detections |
-| `utils/grounding_dino_florence_output_analysis.py` | Quantitative analysis of detection outputs |
+| File                                                  | Description                                                                                                                                                                   |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `utils/dbh_estimator.py`                              | **All-in-one post-processing script**: extracts pixel DBH from JSON, reads image dimensions, merges with field metadata, applies pinhole formula, outputs `estimated_dbh.csv` |
+| `utils/dbh_metric_converter.py`                       | Low-level pixel-to-cm conversion function (used internally by `dbh_estimator.py`)                                                                                             |
+| `utils/PCA_Implementation.py`                         | Standalone PCA experiment on tilted tree images (GroundingDINO + SAM 2, largest trunk only)                                                                                   |
+| `utils/NMS_Technique.py`                              | Standalone NMS experiment on branchy tree images (all detected trunks)                                                                                                        |
+| `utils/mask_dictionary_model.py`                      | `MaskDictionaryModel` / `ObjectInfo` dataclasses for multi-frame mask tracking with IoU-based ID assignment                                                                   |
+| `utils/supervision_utils.py`                          | Custom colour map for `supervision` annotation                                                                                                                                |
+| `utils/track_utils.py`                                | Tracking utilities for video use cases                                                                                                                                        |
+| `utils/video_utils.py`                                | Video frame I/O helpers                                                                                                                                                       |
+| `utils/common_utils.py`                               | Shared utility functions                                                                                                                                                      |
+| `utils/groudingdino_florence_comparison_generator.py` | Side-by-side output comparison between GroundingDINO and Florence-2 detections                                                                                                |
+| `utils/grounding_dino_florence_output_analysis.py`    | Quantitative analysis of detection outputs                                                                                                                                    |
 
 ---
 
@@ -227,6 +265,7 @@ Camera parameters (`sensor_width`, `focal_length`) can be found in your camera's
 Docker provides a fully pre-built environment — all C++ extensions (SAM 2, Grounding DINO) are compiled inside the image. No manual `conda`, CUDA toolkit, or compiler setup is needed on the host.
 
 **Prerequisites:**
+
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows / macOS) or Docker Engine (Linux)
 - **GPU:** [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed and `nvidia-smi` working on the host
 - NVIDIA driver ≥ 525
@@ -251,7 +290,7 @@ docker build -t monodbh --build-arg USE_CUDA=1 --build-arg TORCH_ARCH="8.6" .
 docker build -t monodbh .
 ```
 
-**3. Download model checkpoints** *(one-time — files are saved to the host via volume mounts)*
+**3. Download model checkpoints** _(one-time — files are saved to the host via volume mounts)_
 
 ```bash
 # Linux / macOS
@@ -349,16 +388,16 @@ See [INSTALL.md](INSTALL.md#virtual-environment--dbh-estimator-only) for full de
 
 ---
 
-### Prerequisites *(manual / conda)*
+### Prerequisites _(manual / conda)_
 
-| Requirement | Version |
-|---|---|
-| OS | Linux (recommended) / WSL2 on Windows |
-| Python | ≥ 3.10 |
-| PyTorch | ≥ 2.3.1 |
-| torchvision | ≥ 0.18.1 |
-| CUDA toolkit | 12.1 (must match PyTorch build) — **optional**, CPU-only also works |
-| GPU VRAM | ≥ 8 GB recommended (16 GB for Florence-2-large); not required for CPU |
+| Requirement  | Version                                                               |
+| ------------ | --------------------------------------------------------------------- |
+| OS           | Linux (recommended) / WSL2 on Windows                                 |
+| Python       | ≥ 3.10                                                                |
+| PyTorch      | ≥ 2.3.1                                                               |
+| torchvision  | ≥ 0.18.1                                                              |
+| CUDA toolkit | 12.1 (must match PyTorch build) — **optional**, CPU-only also works   |
+| GPU VRAM     | ≥ 8 GB recommended (16 GB for Florence-2-large); not required for CPU |
 
 > **CPU-only (no GPU):** All three scripts detect the device automatically via `torch.cuda.is_available()` and fall back to CPU if no GPU is present. Inference is functional but **significantly slower** — expect several minutes per image on CPU compared to seconds on GPU. SAM 2 automatic mask generation is the slowest on CPU; consider reducing `points_per_side` to `8` when running without a GPU.
 
@@ -519,7 +558,7 @@ Once a segmentation script has produced JSON output files, run `dbh_estimator.py
 # Edit these four variables at the top of utils/dbh_estimator.py:
 JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"
 IMAGE_FOLDER  = "../notebooks/data"
-METADATA_CSV  = "dbh_csv.csv"   # photo, length (cm), sensor_width (mm), focal_length (mm)
+METADATA_CSV  = "metadata.csv"   # photo, length (cm), sensor_width (mm), focal_length (mm)
 OUTPUT_CSV    = "estimated_dbh.csv"
 ```
 
@@ -546,13 +585,40 @@ For each tree in the study the following steps were performed in the field:
 
 ### Dataset Statistics
 
-| Property | Value |
-|---|---|
-| Total images | 978 |
-| Devices used | 5 |
+| Property         | Value                          |
+| ---------------- | ------------------------------ |
+| Total images     | 978                            |
+| Devices used     | 5                              |
 | Collection sites | Hyderabad & West Bengal, India |
 
 ---
+
+## Data Availability
+
+The dataset used in this study — including all field images, ground-truth DBH measurements, and generated outputs — is publicly archived on Zenodo:
+
+> **Zenodo DOI:** _to be assigned upon publication_
+
+The archive contains:
+
+| Item | Description |
+|------|-------------|
+| `images/` | 978 field photographs (`.jpg`) across 5 devices |
+| `metadata.csv` | Per-image field measurements: GPS, arm length, actual DBH, camera intrinsics |
+| `estimated_dbh.csv` | Full pipeline output with estimated DBH and error metrics |
+
+Once published, the dataset can be cited as:
+
+```bibtex
+@dataset{monodbh_dataset2026,
+  title     = {MonoDBH: Monocular Tree DBH Estimation Dataset},
+  author    = {[Authors]},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {to be assigned},
+  url       = {https://zenodo.org/record/XXXXXXX}
+}
+```
 
 ## Data and Folder Structure
 
@@ -598,6 +664,7 @@ MonoDBH/
 Each processed image produces:
 
 **Annotated image** (`pca_<filename>.jpg`):
+
 - Coloured instance masks per detection
 - Bounding boxes with class labels
 - Blue line: PCA principal axis of the trunk
@@ -624,14 +691,14 @@ Each processed image produces:
 ]
 ```
 
-| Field | Description |
-|---|---|
-| `bbox` | Bounding box `[x1, y1, x2, y2]` in pixels |
-| `area` | Mask area in pixels² |
-| `trunk_angle_deg` | Angle of trunk axis from horizontal (°); 90° = perfectly vertical |
-| `diameter_px` | DBH measurement in pixels |
-| `diameter_line_coords` | Pixel coordinates of the two endpoints of the diameter line |
-| `diameter_center_y` | Y-coordinate at which the diameter was measured |
+| Field                  | Description                                                       |
+| ---------------------- | ----------------------------------------------------------------- |
+| `bbox`                 | Bounding box `[x1, y1, x2, y2]` in pixels                         |
+| `area`                 | Mask area in pixels²                                              |
+| `trunk_angle_deg`      | Angle of trunk axis from horizontal (°); 90° = perfectly vertical |
+| `diameter_px`          | DBH measurement in pixels                                         |
+| `diameter_line_coords` | Pixel coordinates of the two endpoints of the diameter line       |
+| `diameter_center_y`    | Y-coordinate at which the diameter was measured                   |
 
 ---
 
@@ -645,15 +712,15 @@ This code accompanies a journal paper.
 
 Key parameter summary for quick reference:
 
-| Parameter | Value | Where set |
-|---|---|---|
-| Grounding DINO detection threshold | `0.25` | `grounded_sam2_base.py` |
-| NMS IoU threshold | `0.2` | all detection-based scripts |
-| SAM 2 checkpoint | `sam2.1_hiera_large` | all scripts |
-| SAM 2 automatic `points_per_side` | `16` | `sam2_segmentation.py` |
-| PCA row band for start point | ±5 px around bounding box midpoint | all detection-based scripts |
-| Connected-component filter | largest component only per trunk mask | all detection-based scripts |
-| Python / PyTorch / CUDA | 3.10 / 2.3.1 / 12.1 | — |
+| Parameter                          | Value                                 | Where set                   |
+| ---------------------------------- | ------------------------------------- | --------------------------- |
+| Grounding DINO detection threshold | `0.25`                                | `grounded_sam2_base.py`     |
+| NMS IoU threshold                  | `0.2`                                 | all detection-based scripts |
+| SAM 2 checkpoint                   | `sam2.1_hiera_large`                  | all scripts                 |
+| SAM 2 automatic `points_per_side`  | `16`                                  | `sam2_segmentation.py`      |
+| PCA row band for start point       | ±5 px around bounding box midpoint    | all detection-based scripts |
+| Connected-component filter         | largest component only per trunk mask | all detection-based scripts |
+| Python / PyTorch / CUDA            | 3.10 / 2.3.1 / 12.1                   | —                           |
 
 ---
 
@@ -662,9 +729,10 @@ Key parameter summary for quick reference:
 This project builds directly on the following open-source works. We are grateful to their authors for making the code publicly available.
 
 ### SAM 2 — Segment Anything Model 2
+
 **Authors:** Meta AI Research (FAIR)  
 **Repository:** https://github.com/facebookresearch/sam2  
-**Paper:** *SAM 2: Segmentation in Images and Videos* — Ravi et al., 2024. [`arXiv:2408.00714`](https://arxiv.org/abs/2408.00714)  
+**Paper:** _SAM 2: Segmentation in Images and Videos_ — Ravi et al., 2024. [`arXiv:2408.00714`](https://arxiv.org/abs/2408.00714)  
 **Licence:** Apache 2.0 — see [`LICENSE_sam2`](LICENSE_sam2)
 
 SAM 2 source code is included in the `sam2/` directory of this repository under its original licence.
@@ -672,9 +740,10 @@ SAM 2 source code is included in the `sam2/` directory of this repository under 
 ---
 
 ### Grounding DINO
+
 **Authors:** IDEA-Research  
 **Repository:** https://github.com/IDEA-Research/GroundingDINO  
-**Paper:** *Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection* — Liu et al., 2023. [`arXiv:2303.05499`](https://arxiv.org/abs/2303.05499)  
+**Paper:** _Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection_ — Liu et al., 2023. [`arXiv:2303.05499`](https://arxiv.org/abs/2303.05499)  
 **Licence:** Apache 2.0 — see [`LICENSE_groundingdino`](LICENSE_groundingdino)
 
 Grounding DINO source code is included in the `grounding_dino/` directory of this repository under its original licence.
@@ -682,9 +751,10 @@ Grounding DINO source code is included in the `grounding_dino/` directory of thi
 ---
 
 ### Grounded SAM 2 (pipeline concept and reference implementation)
+
 **Authors:** IDEA-Research — Tianhe Ren, Shuo Shen et al.  
 **Repository:** https://github.com/IDEA-Research/Grounded-SAM-2  
-**Paper:** *Grounded SAM: Assembling Open-World Models for Diverse Visual Tasks* — Ren et al., 2024. [`arXiv:2401.14159`](https://arxiv.org/abs/2401.14159)  
+**Paper:** _Grounded SAM: Assembling Open-World Models for Diverse Visual Tasks_ — Ren et al., 2024. [`arXiv:2401.14159`](https://arxiv.org/abs/2401.14159)  
 **Licence:** Apache 2.0
 
 The concept of combining Grounding DINO with SAM 2 for prompted segmentation is taken from the Grounded SAM 2 framework by IDEA-Research. Our DBH pipeline adapts and extends this approach for tree trunk measurement.
@@ -692,9 +762,10 @@ The concept of combining Grounding DINO with SAM 2 for prompted segmentation is 
 ---
 
 ### Florence-2
+
 **Authors:** Microsoft  
 **Repository:** https://huggingface.co/microsoft/Florence-2-large  
-**Paper:** *Florence-2: Advancing a Unified Representation for a Variety of Vision Tasks* — Xiao et al., 2023. [`arXiv:2311.06242`](https://arxiv.org/abs/2311.06242)  
+**Paper:** _Florence-2: Advancing a Unified Representation for a Variety of Vision Tasks_ — Xiao et al., 2023. [`arXiv:2311.06242`](https://arxiv.org/abs/2311.06242)  
 **Licence:** MIT
 
 Used via HuggingFace Transformers as an alternative open-vocabulary detection back-end (`<OPEN_VOCABULARY_DETECTION>` task).
@@ -702,6 +773,7 @@ Used via HuggingFace Transformers as an alternative open-vocabulary detection ba
 ---
 
 ### supervision
+
 **Authors:** Roboflow  
 **Repository:** https://github.com/roboflow/supervision  
 **Licence:** MIT
@@ -716,13 +788,13 @@ This project is released under the **Apache License 2.0**. See [LICENSE](LICENSE
 
 Third-party components retain their original licences:
 
-| Component | Licence | File |
-|---|---|---|
-| SAM 2 | Apache 2.0 | [LICENSE_sam2](LICENSE_sam2) |
+| Component      | Licence    | File                                           |
+| -------------- | ---------- | ---------------------------------------------- |
+| SAM 2          | Apache 2.0 | [LICENSE_sam2](LICENSE_sam2)                   |
 | Grounding DINO | Apache 2.0 | [LICENSE_groundingdino](LICENSE_groundingdino) |
-| CCTorch | Apache 2.0 | [LICENSE_cctorch](LICENSE_cctorch) |
-| Florence-2 | MIT | (HuggingFace Hub) |
-| supervision | MIT | (pip package) |
+| CCTorch        | Apache 2.0 | [LICENSE_cctorch](LICENSE_cctorch)             |
+| Florence-2     | MIT        | (HuggingFace Hub)                              |
+| supervision    | MIT        | (pip package)                                  |
 
 ---
 

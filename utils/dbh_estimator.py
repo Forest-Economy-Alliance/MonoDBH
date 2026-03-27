@@ -10,8 +10,8 @@ Usage
 Required columns in the metadata CSV
 -------------------------------------
     photo         : image filename (e.g. "IMG_001.jpg")
-    length        : camera-to-trunk distance in centimetres
-    sensor_width  : camera sensor width in millimetres
+    arm_length_cm        : camera-to-trunk distance in centimetres
+    sensor_width_mm  : camera sensor width in millimetres
     focal_length  : camera focal length in millimetres
 
 Optional column
@@ -102,7 +102,7 @@ def extract_pixel_widths(json_folder: str) -> pd.DataFrame:
 
             rows.append({
                 'photo': image_name,
-                'dbh_width': width,
+                'dbh_width_pixels': width,
                 'trunk_angle_deg': obj.get('trunk_angle_deg', None),
             })
             found = True
@@ -116,7 +116,7 @@ def extract_pixel_widths(json_folder: str) -> pd.DataFrame:
         for name in skipped:
             print(f'  {name}')
 
-    df = pd.DataFrame(rows, columns=['photo', 'dbh_width', 'trunk_angle_deg'])
+    df = pd.DataFrame(rows, columns=['photo', 'dbh_width_pixels', 'trunk_angle_deg'])
     print(f'Extracted pixel widths from {len(df)} JSON files.')
     return df
 
@@ -144,8 +144,8 @@ def append_image_dimensions(pixel_df: pd.DataFrame, image_folder: str) -> pd.Dat
         heights.append(h)
 
     pixel_df = pixel_df.copy()
-    pixel_df['image_width'] = widths
-    pixel_df['image_height'] = heights
+    pixel_df['image_width_pixels'] = widths
+    pixel_df['image_height_pixels'] = heights
     return pixel_df
 
 
@@ -156,7 +156,7 @@ def append_image_dimensions(pixel_df: pd.DataFrame, image_folder: str) -> pd.Dat
 def merge_with_metadata(pixel_df: pd.DataFrame, metadata_csv: str) -> pd.DataFrame:
     field_df = pd.read_csv(metadata_csv)
 
-    required = {'photo', 'length', 'sensor_width', 'focal_length'}
+    required = {'photo', 'arm_length_cm', 'sensor_width_mm', 'focal_length'}
     missing = required - set(field_df.columns)
     if missing:
         sys.exit(
@@ -165,7 +165,7 @@ def merge_with_metadata(pixel_df: pd.DataFrame, metadata_csv: str) -> pd.DataFra
         )
 
     # Strip unit suffixes from columns that may contain strings like "5.49 mm"
-    for col in ('focal_length', 'sensor_width'):
+    for col in ('focal_length', 'sensor_width_mm'):
         if field_df[col].dtype == object:
             field_df[col] = (
                 field_df[col]
@@ -202,7 +202,7 @@ def merge_with_metadata(pixel_df: pd.DataFrame, metadata_csv: str) -> pd.DataFra
     print("DEBUG: Merged DataFrame:")
     print(matched.head())
     print("DEBUG: Missing values in required columns:")
-    print(matched[['dbh_width', 'sensor_width', 'image_width', 'focal_length']].isnull().sum())
+    print(matched[['dbh_width_pixels', 'sensor_width_mm', 'image_width_pixels', 'focal_length']].isnull().sum())
 
     return matched
 
@@ -214,14 +214,14 @@ def estimate_dbh(df: pd.DataFrame) -> pd.DataFrame:
     """
     Pinhole camera model:
 
-        W_mm = (dbh_width * sensor_width * D_mm) / (image_width * focal_length)
+        W_mm = (dbh_width * sensor_width_mm * D_mm) / (image_width_pixels * focal_length)
         DBH_cm = W_mm / 10
 
     where D_mm = length * 10  (length is stored in CENTIMETRES in the metadata CSV).
     """
     df = df.copy()
 
-    numeric_columns = ['dbh_width', 'sensor_width', 'image_width', 'focal_length']
+    numeric_columns = ['dbh_width_pixels', 'sensor_width_mm', 'image_width_pixels', 'focal_length']
     for col in numeric_columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -231,11 +231,11 @@ def estimate_dbh(df: pd.DataFrame) -> pd.DataFrame:
         print(invalid_rows[['photo'] + numeric_columns])
         df = df.dropna(subset=numeric_columns)
 
-    D_mm = df['length'] * 10                                      # cm → mm
+    D_mm = df['arm_length_cm'] * 10                                      # cm → mm
     W_mm = (
-        df['dbh_width'] * df['sensor_width'] * D_mm
-    ) / (df['image_width'] * df['focal_length'])
-    df['estimated_dbh'] = (W_mm / 10).round(4)                   # mm → cm
+        df['dbh_width_pixels'] * df['sensor_width_mm'] * D_mm
+    ) / (df['image_width_pixels'] * df['focal_length'])
+    df['estimated_dbh_cm'] = (W_mm / 10).round(4)                   # mm → cm
     return df
 
 
@@ -244,18 +244,17 @@ def estimate_dbh(df: pd.DataFrame) -> pd.DataFrame:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def print_summary(df: pd.DataFrame) -> None:
-    if 'actual_dbh' in df.columns:
+    if 'field_measured_dbh_cm' in df.columns:
         df = df.copy()
-        df['error_cm']  = (df['estimated_dbh'] - df['actual_dbh']).round(4)
-        df['error_pct'] = ((df['error_cm'] / df['actual_dbh']) * 100).round(2)
+        df['error_cm']  = (df['estimated_dbh_cm'] - df['field_measured_dbh_cm']).round(4)
+        df['error_pct'] = ((df['error_cm'] / df['field_measured_dbh_cm']) * 100).round(2)
         print(
-            df[['photo', 'actual_dbh', 'estimated_dbh', 'error_cm', 'error_pct']]
+            df[['photo', 'field_measured_dbh_cm', 'estimated_dbh_cm', 'error_cm', 'error_pct']]
             .to_string(index=False)
         )
-        print(f'\nMean absolute error            : {df["error_cm"].abs().mean():.4f} cm')
-        print(f'Mean absolute percentage error : {df["error_pct"].abs().mean():.2f} %')
+        print(f'\nMean absolute error : {df["error_cm"].abs().mean():.4f} cm') 
     else:
-        print(df[['photo', 'dbh_width', 'estimated_dbh']].to_string(index=False))
+        print(df[['photo', 'dbh_width_pixels', 'estimated_dbh_cm']].to_string(index=False))
 
 
 # ──────────────────────────────────────────────────────────────────────────────

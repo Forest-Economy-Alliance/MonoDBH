@@ -55,7 +55,7 @@
 
 ### Recording the hand-to-tree distance
 
-The `length` column in the raw CSV is the **physical distance from the camera sensor to the trunk surface**, in centimetres. In practice this is approximately equal to the arm's length of the person holding the phone.
+The `arm_length_cm` column in the raw CSV is the **physical distance from the camera sensor to the trunk surface**, in centimetres. In practice this is approximately equal to the arm's length of the person holding the phone.
 
 > **Tip:** Use `exiftool <image.jpg>` to extract focal length and sensor width directly from EXIF metadata, rather than looking them up in a spec sheet.
 
@@ -197,7 +197,7 @@ Open `utils/dbh_estimator.py` and set the four path variables at the top:
 ```python
 JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"  # JSON output folder
 IMAGE_FOLDER  = "../notebooks/data"        # original input images
-METADATA_CSV  = "dbh_csv.csv"              # field measurement CSV
+METADATA_CSV  = "metadata.csv"              # field measurement CSV
 OUTPUT_CSV    = "estimated_dbh.csv"        # where to write results
 ```
 
@@ -214,11 +214,11 @@ python utils/dbh_estimator.py
 | 1 | Iterates all `.json` files in `JSON_FOLDER`. For each file, reads `diameter_px` (Euclidean — correct for tilted trunks). Falls back to `diameter_line_coords` / `lowest_point_line_coords` for legacy files. |
 | 2 | Opens each image header (fast, no full decode) to read `image_width` and `image_height`. |
 | 3 | Left-joins the pixel measurements onto the metadata CSV on the `photo` column. Reports any images that have no matching segmentation output. |
-| 4 | Applies the pinhole formula to compute `estimated_dbh` in cm. Writes `OUTPUT_CSV`. |
+| 4 | Applies the pinhole formula to compute `estimated_dbh_cm` in cm.
 
 ### Console output
 
-The script prints a summary table. If `actual_dbh` is present in the metadata CSV, it also prints MAE in cm and %.
+The script prints a summary table. If `field_measured_dbh_cm` is present in the metadata CSV, it also prints MAE in cm and %.
 
 > **Note on pixel width extraction:** `diameter_px` is stored in the JSON as the Euclidean distance between the two endpoints of the PCA-perpendicular diameter line. This is correct for both upright and tilted trunks. The old approach of computing `right_x - left_x` (horizontal projection) only holds for perfectly vertical trunks and is no longer used.
 
@@ -226,7 +226,7 @@ The script prints a summary table. If `actual_dbh` is present in the metadata CS
 
 ## 5. The Raw Field Measurement CSV
 
-**File:** `dbh_csv.csv` (user-supplied, not committed to the repository)
+**File:** `metadata.csv` (user-supplied, not committed to the repository)
 
 This CSV must be prepared manually from field records. One row per photographed tree / measurement.
 
@@ -235,11 +235,11 @@ This CSV must be prepared manually from field records. One row per photographed 
 | Column | Type | Units | Description |
 |---|---|---|---|
 | `photo` | string | — | Image filename including extension, e.g. `IMG_0042.jpg`. Must match the filename used in the JSON output. |
-| `actual_dbh` | float | cm | Ground-truth DBH measured with a diameter tape in the field. Used for validation/error computation only, not for the estimation formula. |
-| `arm_length` | float | cm | Distance from camera sensor to trunk surface. In practice, the arm length of the photographer holding the phone against the trunk. |
+| `field_measured_dbh_cm` | float | cm | Ground-truth DBH measured with a diameter tape in the field. Used for validation/error computation only, not for the estimation formula. |
+| `arm_length_cm` | float | cm | Distance from camera sensor to trunk surface. In practice, the arm length of the photographer holding the phone against the trunk. |
 | `focal_length` | float | mm | Camera focal length. Read from EXIF (`exiftool <image> | grep "Focal Length"`). |
-| `sensor_width` | float | mm | Physical sensor width of the camera. Found in the camera spec sheet or EXIF (`Exif.Photo.FocalPlaneXResolution` + `FocalPlaneResolutionUnit`). |
-| `image_width` | float | px | Full image width in pixels. Added automatically by Cell 2 of the notebook — include this column if it is not already present. |
+| `sensor_width_mm` | float | mm | Physical sensor width of the camera. Found in the camera spec sheet or EXIF (`Exif.Photo.FocalPlaneXResolution` + `FocalPlaneResolutionUnit`). |
+| `image_width_pixels` | float | px | Full image width in pixels. Added automatically by Cell 2 of the notebook — include this column if it is not already present. |
 
 **Example rows:**
 
@@ -258,20 +258,20 @@ IMG_0003.jpg,51.0,80,4.25,6.17,4032
 
 ## 6. Merging Pixel Measurements with Field Data
 
-`utils/dbh_estimator.py` handles the merge automatically. After running, `OUTPUT_CSV` contains:
+`utils/dbh_estimator.py` handles the merge automatically. After running, `estimated_dbh` contains:
 
 | Column | Source | Description |
 |---|---|---|
 | `photo` | metadata CSV | Image filename |
-| `actual_dbh` | metadata CSV | Ground-truth DBH (cm) — if provided |
-| `length` | metadata CSV | Camera-to-trunk distance (cm) |
+| `field_measured_dbh_cm` | metadata CSV | Ground-truth DBH (cm) — if provided |
+| `arm_length_cm` | metadata CSV | Camera-to-trunk distance (cm) |
 | `focal_length` | metadata CSV | Camera focal length (mm) |
-| `sensor_width` | metadata CSV | Camera sensor width (mm) |
-| `dbh_width` | JSON extraction | DBH width in pixels (`diameter_px`, Euclidean) |
+| `sensor_width_mm` | metadata CSV | Camera sensor width (mm) |
+| `dbh_width_pixels` | JSON extraction | DBH width in pixels (`diameter_px`, Euclidean) |
 | `trunk_angle_deg` | JSON extraction | Trunk tilt angle (°); 90° = vertical |
-| `image_width` | image file | Full image width in pixels |
-| `image_height` | image file | Full image height in pixels |
-| `estimated_dbh` | formula | Estimated DBH in centimetres |
+| `image_width_pixels` | image file | Full image width in pixels |
+| `image_height_pixels` | image file | Full image height in pixels |
+| `estimated_dbh_cm` | formula | Estimated DBH in centimetres |
 
 Images in the metadata with no matching JSON output are reported on the console and excluded from the output CSV.
 
@@ -291,25 +291,25 @@ $$\text{DBH}_{\text{cm}} = \frac{W_{\text{mm}}}{10}$$
 
 | Symbol | CSV column | Description | Units |
 |---|---|---|---|
-| $n$ | `dbh_width` | Trunk width in pixels | px |
-| $S$ | `sensor_width` | Camera sensor width | mm |
-| $D_{\text{mm}}$ | `length × 10` | Camera-to-trunk distance | mm (`length` is in cm) |
-| $N$ | `image_width` | Full image width | px |
+| $n$ | `dbh_width_pixels` | Trunk width in pixels | px |
+| $S$ | `sensor_width_mm` | Camera sensor width | mm |
+| $D_{\text{mm}}$ | `arm_length_cm × 10` | Camera-to-trunk distance | mm (`arm_length_cm` is in cm) |
+| $N$ | `image_width_pixels` | Full image width | px |
 | $f$ | `focal_length` | Camera focal length | mm |
 
 ### Running the conversion
 
-Conversion runs automatically inside `utils/dbh_estimator.py`. Set `OUTPUT_CSV` at the top of the script and run:
+Conversion runs automatically inside `utils/dbh_estimator.py`. Set `estimated_dbh` at the top of the script and run:
 
 ```bash
 python utils/dbh_estimator.py
 ```
 
-The output CSV has `estimated_dbh` (float, cm, 4 decimal places) appended to all metadata and pixel columns. If `actual_dbh` is in the metadata CSV, the console also prints MAE in cm and %.
+The output CSV has `estimated_dbh_cm` (float, cm, 4 decimal places) appended to all metadata and pixel columns. If `field_measured_dbh_cm` is in the metadata CSV, the console also prints MAE in cm and %.
 
 ### Output CSV
 
-`estimated_dbh` is rounded to 4 decimal places and appended as the last column alongside all metadata and pixel-width columns.
+`estimated_dbh_cm` is rounded to 4 decimal places and appended as the last column alongside all metadata and pixel-width columns.
 
 ---
 
@@ -396,7 +396,7 @@ Merged 1 matched rows (0 unmatched excluded).
 Step 4 — Computing estimated DBH...
 Saved 1 rows -> estimated_dbh.csv
 ────────────────────────────────────────────────────────────
-     photo  actual_dbh  estimated_dbh  error_cm  error_pct
+     photo  field_measured_dbh_cm  estimated_dbh_cm  error_cm  error_pct
 IMG_0042.jpg       41.5        42.3100    0.8100       1.95
 
 Mean absolute error            : 0.8100 cm
@@ -412,7 +412,7 @@ W_mm  = (243 × 6.17 × 2000) / (4032 × 4.25)
 DBH_cm = W_mm / 10
 ```
 
-> The formula scales linearly with `length`. Always verify `length`, `sensor_width`, and `focal_length` are correct for each device before interpreting results.
+> The formula scales linearly with `arm_length_cm`. Always verify `arm_length_cm`, `sensor_width_mm`, and `focal_length` are correct for each device before interpreting results.
 
 ---
 
@@ -471,10 +471,10 @@ Some images in the field CSV have no matching segmentation output.
 
 ---
 
-### `estimated_dbh` is unrealistically small or large
+### `estimated_dbh_cm` is unrealistically small or large
 
-- **Too small:** `length` (distance) was entered in mm instead of cm. The formula expects cm.
-- **Too large:** `sensor_width` was entered as the diagonal sensor size rather than width. Use the width dimension only.
+- **Too small:** `arm_length_cm` (distance) was entered in mm instead of cm. The formula expects cm.
+- **Too large:** `sensor_width_mm` was entered as the diagonal sensor size rather than width. Use the width dimension only.
 - **Off by constant factor:** `focal_length` is the 35mm-equivalent value; use the physical focal length instead.
 
 Run a sanity check: for a typical smartphone at 100 cm distance, a 30 cm trunk should measure roughly:

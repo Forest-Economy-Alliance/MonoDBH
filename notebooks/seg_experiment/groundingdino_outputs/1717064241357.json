@@ -1,0 +1,26 @@
+[
+  {
+    "id": 0,
+    "class": "tree trunk",
+    "bbox": [
+      527.1928100585938,
+      2.8852224349975586,
+      2192.247314453125,
+      3993.345703125
+    ],
+    "area": 4226629,
+    "trunk_angle_deg": 79.82,
+    "diameter_px": 1323,
+    "diameter_line_coords": {
+      "left": [
+        2133,
+        1877
+      ],
+      "right": [
+        830,
+        2111
+      ]
+    },
+    "diameter_center_y": 1997
+  }
+]
