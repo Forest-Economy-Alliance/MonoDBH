@@ -7,7 +7,8 @@ This document covers everything you need to install the environment, download mo
 ## Table of Contents
 
 - [System Requirements](#system-requirements)
-- [1. Clone the Repository](#1-clone-the-repository)
+- [Docker Quick-Start (Recommended)](#docker-quick-start-recommended)
+- [1. Clone the Repository](#1-clone-the-repository) *(manual / conda)*
 - [2. Create a Conda Environment](#2-create-a-conda-environment)
 - [3. Install PyTorch with CUDA](#3-install-pytorch-with-cuda)
 - [4. Set CUDA\_HOME](#4-set-cuda_home)
@@ -42,7 +43,186 @@ This document covers everything you need to install the environment, download mo
 
 ---
 
-## 1. Clone the Repository
+## Docker Quick-Start (Recommended)
+
+Docker is the easiest way to run MonoDBH. All C++ extensions (SAM 2, Grounding DINO CUDA ops) are pre-compiled inside the image, so there is nothing to configure on the host beyond Docker itself.
+
+### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Docker Desktop (Windows/macOS) or Docker Engine (Linux) | [Install guide](https://docs.docker.com/get-docker/) |
+| NVIDIA Container Toolkit | [Install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) — required for GPU access |
+| NVIDIA driver ≥ 525 | Verify with `nvidia-smi` |
+
+> **CPU-only:** All three scripts detect the device automatically. Drop `--build-arg USE_CUDA=1` at build time and omit `--gpus all` from run commands.
+
+---
+
+### Step 1 — Clone the repository
+
+```bash
+git clone https://github.com/Forest-Economy-Alliance/MonoDBH
+cd MonoDBH
+```
+
+---
+
+### Step 2 — Build the Docker image
+
+The root `Dockerfile` installs PyTorch 2.3.1 + CUDA 12.1, SAM 2, and Grounding DINO in a single image.
+
+**GPU build** (set `TORCH_ARCH` for your GPU):
+
+| GPU family | `TORCH_ARCH` value |
+|---|---|
+| RTX 20xx (Turing) | `7.5` |
+| A100 (Ampere) | `8.0` |
+| RTX 30xx (Ampere) | `8.6` |
+| RTX 40xx (Ada) | `8.9` |
+
+```bash
+docker build -t monodbh \
+  --build-arg USE_CUDA=1 \
+  --build-arg TORCH_ARCH="8.6" \
+  .
+```
+
+**CPU-only build:**
+
+```bash
+docker build -t monodbh .
+```
+
+> The first build compiles the Grounding DINO CUDA extension and may take 10–20 minutes. Subsequent builds use Docker’s layer cache.
+
+---
+
+### Step 3 — Download model checkpoints *(one-time)*
+
+Run the download scripts inside a temporary container. The files are written to the **host** via volume mounts and will be reused on every future `docker run`.
+
+**Linux / macOS:**
+```bash
+docker run --rm \
+  -v "$(pwd)/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" \
+  -v "$(pwd)/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" \
+  monodbh bash -c \
+    "cd checkpoints && bash download_ckpts.sh && \
+     cd ../gdino_checkpoints && bash download_ckpts.sh"
+```
+
+**Windows (PowerShell):**
+```powershell
+docker run --rm `
+  -v "${PWD}/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" `
+  -v "${PWD}/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" `
+  monodbh bash -c `
+    "cd checkpoints && bash download_ckpts.sh && cd ../gdino_checkpoints && bash download_ckpts.sh"
+```
+
+Expected downloads: `sam2.1_hiera_large.pt` (~850 MB) and the Grounding DINO weights.
+
+---
+
+### Step 4 — Prepare your images
+
+Create input directories on the host and place your images inside:
+
+```bash
+mkdir -p notebooks/data
+mkdir -p notebooks/tilted_trees
+mkdir -p notebooks/branches_data
+```
+
+| Folder | Use for |
+|---|---|
+| `notebooks/data/` | General upright tree images |
+| `notebooks/tilted_trees/` | Leaning or tilted trees |
+| `notebooks/branches_data/` | Trees with heavy branching |
+
+---
+
+### Step 5 — Run a DBH script
+
+Mount the `notebooks/` and checkpoint directories so data flows between host and container.
+
+**Linux / macOS (GPU):**
+```bash
+docker run --gpus all --rm \
+  -v "$(pwd)/notebooks:/home/appuser/Grounded-SAM-2/notebooks" \
+  -v "$(pwd)/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" \
+  -v "$(pwd)/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" \
+  monodbh python grounded_sam2_base.py
+```
+
+**Windows (PowerShell + GPU):**
+```powershell
+docker run --gpus all --rm `
+  -v "${PWD}/notebooks:/home/appuser/Grounded-SAM-2/notebooks" `
+  -v "${PWD}/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" `
+  -v "${PWD}/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" `
+  monodbh python grounded_sam2_base.py
+```
+
+| Script | Command |
+|---|---|
+| Grounding DINO + SAM 2 | `python grounded_sam2_base.py` |
+| Florence-2 + SAM 2 | `python grounded_sam2_florence2.py` |
+| SAM 2 Automatic | `python sam2_segmentation.py` |
+
+Output files (annotated images + JSON sidecars) are written to `notebooks/seg_experiment/` on your host machine.
+
+---
+
+### Step 6 — Run the metric conversion
+
+**Linux / macOS:**
+```bash
+docker run --rm \
+  -v "$(pwd)/notebooks:/home/appuser/Grounded-SAM-2/notebooks" \
+  -v "$(pwd)/utils:/home/appuser/Grounded-SAM-2/utils" \
+  monodbh python utils/dbh_estimator.py
+```
+
+**Windows (PowerShell):**
+```powershell
+docker run --rm `
+  -v "${PWD}/notebooks:/home/appuser/Grounded-SAM-2/notebooks" `
+  -v "${PWD}/utils:/home/appuser/Grounded-SAM-2/utils" `
+  monodbh python utils/dbh_estimator.py
+```
+
+> Edit the four path variables at the top of `utils/dbh_estimator.py` before running (see [Step 10 — Run the DBH Scripts](#10-run-the-dbh-scripts) for details).
+
+---
+
+### Common Docker Issues
+
+<details>
+<summary><strong>docker: Error response from daemon: could not select device driver "nvidia"</strong></summary>
+<br/>
+
+The NVIDIA Container Toolkit is not installed or the Docker daemon has not been restarted after installation. Follow the [official install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) and run `sudo systemctl restart docker`.
+</details>
+
+<details>
+<summary><strong>Windows: bind mount path not found / permission denied</strong></summary>
+<br/>
+
+Ensure Docker Desktop has access to the drive. Go to **Settings → Resources → File Sharing** and add the drive letter (e.g. `C:`). Then retry the `docker run` command.
+</details>
+
+<details>
+<summary><strong>Build fails with "gcc: error: unrecognized command-line option '-arch'"</strong></summary>
+<br/>
+
+The `TORCH_ARCH` value contains an architecture not supported by the installed GCC. Use only the compute capability for your GPU (e.g. `"8.6"` for RTX 30xx) instead of a semicolon-separated list.
+</details>
+
+---
+
+## 1. Clone the Repository *(manual / conda)*
 
 ```bash
 git clone https://github.com/<your-org>/MonoDBH.git

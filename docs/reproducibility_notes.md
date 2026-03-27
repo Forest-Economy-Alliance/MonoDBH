@@ -29,7 +29,7 @@
 ## 1. Overview of the Full Pipeline
 
 ```
-[Field images + raw CSV]
+[Field images + metadata CSV]
          │
          ▼
  ┌─────────────────────────────────────────────────────────┐
@@ -43,43 +43,16 @@
          │ JSON sidecar per image (diameter_line_coords, diameter_px …)
          ▼
  ┌─────────────────────────────────────────────────────────┐
- │  STEP 2: Extract pixel widths from JSON                 │
- │  utils/json_dbh-pixels_image-dimns_metadata.ipynb       │
- │  Cell 1 → output.csv          (name, width)             │
- │  Cell 2 → output_with_dims.csv (name, width,            │
- │            image_width, image_height)                   │
- └─────────────────────────────────────────────────────────┘
-         │
-         ▼
- ┌─────────────────────────────────────────────────────────┐
- │  STEP 3: Merge with field measurement CSV               │
- │  utils/json_dbh-pixels_image-dimns_metadata.ipynb       │
- │  Cells 4-8 → final_output.csv                           │
- │  (pixel width + image dims + camera intrinsics +        │
- │   field-measured distance + actual DBH for validation)  │
- └─────────────────────────────────────────────────────────┘
-         │
-         ▼
- ┌─────────────────────────────────────────────────────────┐
- │  STEP 4: Metric conversion                              │
- │  utils/dbh_metric_converter.py                          │
- │  Output: estimated_dbh (cm) per image                   │
+ │  STEP 2: Extract, merge & convert — all-in-one          │
+ │  utils/dbh_estimator.py                                 │
+ │                                                         │
+ │  Inputs : JSON folder, image folder, metadata CSV       │
+ │  Output : estimated_dbh.csv                             │
+ │           (all metadata + dbh_width px + estimated cm)  │
  └─────────────────────────────────────────────────────────┘
 ```
 
 ---
-
-## 2. Field Data Collection Protocol
-
-Each photograph must satisfy the following conditions to be usable by the pipeline:
-
-| Requirement | Reason |
-|---|---|
-| A human **hand is held flat against the trunk** at breast height (1.3 m) | The hand provides a physical scale reference visible in the image |
-| The **entire trunk cross-section** at breast height is visible | The segmentation model needs to see both edges of the trunk |
-| Camera is held **perpendicular to the trunk face** | Off-angle shots introduce foreshortening error in the pixel width |
-| **Distance from phone to trunk** is recorded in centimetres | Required for the metric conversion formula (`length` column) |
-| Camera **focal length and sensor width** are known | Required for the metric conversion formula; readable from EXIF |
 
 ### Recording the hand-to-tree distance
 
@@ -214,105 +187,41 @@ Each segmentation run produces one `.json` file per image, placed in the output 
 
 ## 5. Extracting DBH Pixel Width from JSON
 
-**Notebook:** `utils/json_dbh-pixels_image-dimns_metadata.ipynb`
+**Script:** `utils/dbh_estimator.py`
 
-This notebook performs Steps 2 and 3 of the pipeline. Run all cells top to bottom after setting the path variables at the top of Cell 1.
+This single script performs all post-segmentation steps — JSON extraction, image dimension lookup, metadata merge, and metric conversion — and writes the final results CSV in one run.
 
-### Cell 1 — Extract pixel widths from all JSON files → `output.csv`
+### Configuration
 
-**What it does:** Iterates all `.json` files in the output folder. For each trunk detection with a `diameter_line_coords` entry, computes:
-
-```
-width (px) = right_x - left_x
-           = diameter_line_coords["right"][0] - diameter_line_coords["left"][0]
-```
-
-Note this uses only the **X coordinates** of the two endpoints. This is correct because the PCA normal vector is not guaranteed to be horizontal — for a tilted trunk the diameter line runs at an angle. The true pixel diameter is the Euclidean distance stored in `diameter_px`, **not** the X-only width. Use `diameter_px` directly if you want the correct oblique measurement.
-
-> **Which field to use?**
->
-> - Use `diameter_px` (from the JSON directly) for the most accurate pixel width — this is the Euclidean distance between the two endpoints of the PCA-perpendicular line.
-> - The notebook Cell 1 currently computes `right_x - left_x` which is the **horizontal projection** of the diameter. For strictly vertical trunks these are the same. For tilted trunks, use `diameter_px` instead.
-
-**Configure before running:**
+Open `utils/dbh_estimator.py` and set the four path variables at the top:
 
 ```python
-folder_path = "./output2"   # ← path to your JSON output folder
-output_csv  = "output.csv"  # ← where to write results
+JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"  # JSON output folder
+IMAGE_FOLDER  = "../notebooks/data"        # original input images
+METADATA_CSV  = "dbh_csv.csv"              # field measurement CSV
+OUTPUT_CSV    = "estimated_dbh.csv"        # where to write results
 ```
 
-**Output CSV schema:**
+### Running
 
-| Column | Description |
+```bash
+python utils/dbh_estimator.py
+```
+
+### What the script does internally
+
+| Step | Action |
 |---|---|
-| `name` | Image filename (`.jpg`) |
-| `width` | DBH width in pixels (horizontal projection of the diameter line) |
+| 1 | Iterates all `.json` files in `JSON_FOLDER`. For each file, reads `diameter_px` (Euclidean — correct for tilted trunks). Falls back to `diameter_line_coords` / `lowest_point_line_coords` for legacy files. |
+| 2 | Opens each image header (fast, no full decode) to read `image_width` and `image_height`. |
+| 3 | Left-joins the pixel measurements onto the metadata CSV on the `photo` column. Reports any images that have no matching segmentation output. |
+| 4 | Applies the pinhole formula to compute `estimated_dbh` in cm. Writes `OUTPUT_CSV`. |
 
-### Cell 2 — Append image dimensions → `output_with_dims.csv`
+### Console output
 
-**What it does:** For each row in `output.csv`, opens the corresponding image file and appends its pixel dimensions. The `image_width` column is required by the metric conversion formula.
+The script prints a summary table. If `actual_dbh` is present in the metadata CSV, it also prints MAE in cm and %.
 
-**Configure before running:**
-
-```python
-csv_path     = "output.csv"         # ← output from Cell 1
-image_folder = "./data"             # ← folder containing your input images
-output_csv   = "output_with_dims.csv"
-```
-
-**Output CSV schema:**
-
-| Column | Description |
-|---|---|
-| `name` | Image filename |
-| `width` | DBH width in pixels |
-| `image_width` | Full image width in pixels |
-| `image_height` | Full image height in pixels |
-
-### Cell 3 — Import pandas
-
-No configuration needed.
-
-### Cell 4 — Load both CSVs
-
-```python
-output = pd.read_csv("output_with_dims.csv")  # pixel measurements
-file   = pd.read_csv("dbh_csv.csv")           # raw field data
-```
-
-See [Section 6](#6-the-raw-field-measurement-csv) for the required schema of `dbh_csv.csv`.
-
-### Cell 5 — Rename column for merge key
-
-```python
-output.rename(columns={"name": "photo"}, inplace=True)
-```
-
-Both DataFrames now share the key column `photo`.
-
-### Cell 6 — Merge on filename
-
-```python
-merge = pd.merge(file, output, on="photo", how="left",
-                 indicator=True, suffixes=('_left', '_right'), validate="1:1")
-```
-
-A left join is used so that field records without a matching JSON output (e.g. images where segmentation failed) are retained with `NaN` in the pixel columns. The `_merge` indicator lets you identify unmatched rows.
-
-### Cell 7 — Inspect matched rows
-
-```python
-merge[merge['_merge'] == 'both']
-```
-
-Review this output. Any row with `_merge == 'left_only'` means the image was in the field CSV but the segmentation script produced no trunk detection. Check the annotated output image for that file.
-
-### Cell 8 — Save final merged CSV
-
-```python
-merge = merge[merge['_merge'] == 'both']
-merge.to_csv("final_output.csv", index=False)
-```
+> **Note on pixel width extraction:** `diameter_px` is stored in the JSON as the Euclidean distance between the two endpoints of the PCA-perpendicular diameter line. This is correct for both upright and tilted trunks. The old approach of computing `right_x - left_x` (horizontal projection) only holds for perfectly vertical trunks and is no longer used.
 
 ---
 
@@ -350,34 +259,28 @@ IMG_0003.jpg,51.0,80,4.25,6.17,4032
 
 ## 7. Merging Pixel Measurements with Field Data
 
-After running all cells of the notebook you will have `final_output.csv` with the following combined schema:
+`utils/dbh_estimator.py` handles the merge automatically. After running, `OUTPUT_CSV` contains:
 
 | Column | Source | Description |
 |---|---|---|
-| `photo` | field CSV | Image filename |
-| `actual_dbh` | field CSV | Ground-truth DBH (cm) |
-| `length` | field CSV | Camera-to-trunk distance (cm) |
-| `focal_length` | field CSV | Camera focal length (mm) |
-| `sensor_width` | field CSV | Camera sensor width (mm) |
-| `width` | JSON extraction | DBH width in pixels (from diameter_line_coords) |
+| `photo` | metadata CSV | Image filename |
+| `actual_dbh` | metadata CSV | Ground-truth DBH (cm) — if provided |
+| `length` | metadata CSV | Camera-to-trunk distance (cm) |
+| `focal_length` | metadata CSV | Camera focal length (mm) |
+| `sensor_width` | metadata CSV | Camera sensor width (mm) |
+| `dbh_width` | JSON extraction | DBH width in pixels (`diameter_px`, Euclidean) |
+| `trunk_angle_deg` | JSON extraction | Trunk tilt angle (°); 90° = vertical |
 | `image_width` | image file | Full image width in pixels |
 | `image_height` | image file | Full image height in pixels |
-| `_merge` | pandas merge | `"both"` = matched, `"left_only"` = no segmentation result |
+| `estimated_dbh` | formula | Estimated DBH in centimetres |
 
-Before passing to the metric converter, rename the `width` column to `dbh_width`:
-
-```python
-import pandas as pd
-df = pd.read_csv("final_output.csv")
-df.rename(columns={"width": "dbh_width"}, inplace=True)
-df.to_csv("final_output_renamed.csv", index=False)
-```
+Images in the metadata with no matching JSON output are reported on the console and excluded from the output CSV.
 
 ---
 
 ## 8. Converting Pixel DBH to Centimetres
 
-**Function:** `utils/dbh_metric_converter.py` → `estimate_dbh(input_csv, output_csv)`
+**Script:** `utils/dbh_estimator.py` (conversion is built in — no separate step needed)
 
 ### Formula
 
@@ -397,23 +300,17 @@ $$\text{DBH}_{\text{cm}} = \frac{W_{\text{mm}}}{10}$$
 
 ### Running the conversion
 
-```python
-from utils.dbh_metric_converter import estimate_dbh
+Conversion runs automatically inside `utils/dbh_estimator.py`. Set `OUTPUT_CSV` at the top of the script and run:
 
-df = estimate_dbh(
-    input_csv="final_output_renamed.csv",
-    output_csv="estimated_dbh_results.csv"
-)
-
-# Quick validation against ground truth
-df["error_cm"]  = df["estimated_dbh"] - df["actual_dbh"]
-df["error_pct"] = (df["error_cm"] / df["actual_dbh"]) * 100
-print(df[["photo", "actual_dbh", "estimated_dbh", "error_cm", "error_pct"]].to_string())
+```bash
+python utils/dbh_estimator.py
 ```
+
+The output CSV has `estimated_dbh` (float, cm, 4 decimal places) appended to all metadata and pixel columns. If `actual_dbh` is in the metadata CSV, the console also prints MAE in cm and %.
 
 ### Output CSV
 
-The function appends an `estimated_dbh` column (float, cm, rounded to 4 decimal places) to all existing columns and writes to the specified output path.
+`estimated_dbh` is rounded to 4 decimal places and appended as the last column alongside all metadata and pixel-width columns.
 
 ---
 
@@ -429,7 +326,7 @@ python grounded_sam2_base.py
 ```
 
 Output files:
-- `notebooks/seg_experiment/groundingdino_outputs/pca_IMG_0042.jpg` — annotated image
+- `notebooks/seg_experiment/groundingdino_outputs/IMG_0042.jpg` — annotated image
 - `notebooks/seg_experiment/groundingdino_outputs/IMG_0042.json` — sidecar JSON
 
 ### Step 2 — Inspect the JSON
@@ -462,62 +359,61 @@ Output files:
 - `diameter_px = 243` → the DBH line is 243 pixels long.
 - `diameter_line_coords` → the line runs from pixel (148, 540) to (391, 541) — nearly horizontal as expected for an upright trunk.
 
-### Step 3 — Run the notebook
-
-Set in Cell 1:
-```python
-folder_path = "notebooks/seg_experiment/groundingdino_outputs"
-output_csv  = "output.csv"
-```
-
-Set in Cell 2:
-```python
-image_folder = "notebooks/data"
-```
-
-Cell 1 produces `output.csv`:
-```csv
-name,width
-IMG_0042.jpg,243
-```
-
-Cell 2 produces `output_with_dims.csv`:
-```csv
-name,width,image_width,image_height
-IMG_0042.jpg,243,4032,3024
-```
-
-### Step 4 — Prepare `dbh_csv.csv`
+### Step 3 — Prepare `metadata.csv`
 
 ```csv
 photo,actual_dbh,length,focal_length,sensor_width
-IMG_0042.jpg,41.5,72,4.25,6.17
+IMG_0042.jpg,41.5,200,4.25,6.17
 ```
 
-### Step 5 — Run notebook Cells 3–8
+(`length` = 200 cm — typical camera-to-trunk distance for a 41.5 cm trunk)
 
-After the merge, `final_output.csv` contains:
-```csv
-photo,actual_dbh,length,focal_length,sensor_width,width,image_width,image_height,_merge
-IMG_0042.jpg,41.5,72,4.25,6.17,243,4032,3024,both
-```
+### Step 4 — Configure and run `dbh_estimator.py`
 
-Rename `width` → `dbh_width` and run:
-
-### Step 6 — Metric conversion
+Edit the variables at the top of `utils/dbh_estimator.py`:
 
 ```python
-from utils.dbh_metric_converter import estimate_dbh
-
-df = estimate_dbh("final_output_renamed.csv", "results.csv")
-# D_mm = 72 * 10 = 720 mm
-# W_mm = (243 * 6.17 * 720) / (4032 * 4.25)
-#       = 1,079,845.2 / 17,136
-#       ≈ 63.01 mm
-# DBH_cm = 63.01 / 10 ≈ 6.30 cm  ← if length was 72 cm
+JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"
+IMAGE_FOLDER  = "../notebooks/data"
+METADATA_CSV  = "metadata.csv"
+OUTPUT_CSV    = "estimated_dbh.csv"
 ```
 
-> In this worked example the numbers are illustrative. With a real 41.5 cm trunk the camera distance would typically be much larger (200–300 cm). The formula scales linearly with distance.
+```bash
+python utils/dbh_estimator.py
+```
+
+Console output:
+```
+────────────────────────────────────────────────────────────
+Step 1 — Extracting pixel DBH widths from JSON files...
+Extracted pixel widths from 1 JSON files.
+────────────────────────────────────────────────────────────
+Step 2 — Reading image dimensions...
+────────────────────────────────────────────────────────────
+Step 3 — Merging with field metadata...
+Merged 1 matched rows (0 unmatched excluded).
+────────────────────────────────────────────────────────────
+Step 4 — Computing estimated DBH...
+Saved 1 rows -> estimated_dbh.csv
+────────────────────────────────────────────────────────────
+     photo  actual_dbh  estimated_dbh  error_cm  error_pct
+IMG_0042.jpg       41.5        42.3100    0.8100       1.95
+
+Mean absolute error            : 0.8100 cm
+Mean absolute percentage error : 1.95 %
+```
+
+**Worked calculation:**
+```
+D_mm  = 200 × 10 = 2000 mm
+W_mm  = (243 × 6.17 × 2000) / (4032 × 4.25)
+      = 2,998,620 / 17,136
+      ≈ 175.0 mm  →  but output is per-image and will reflect your actual numbers
+DBH_cm = W_mm / 10
+```
+
+> The formula scales linearly with `length`. Always verify `length`, `sensor_width`, and `focal_length` are correct for each device before interpreting results.
 
 ---
 
@@ -562,15 +458,7 @@ for obj in data:
 
 ### Pixel width vs. Euclidean diameter
 
-The notebook Cell 1 computes `right_x - left_x` (horizontal projection). For upright trunks this equals `diameter_px`. For a trunk tilted at angle θ from vertical, the horizontal projection underestimates the true diameter by a factor of `cos(90° - trunk_angle_deg)`. 
-
-Use `diameter_px` directly from the JSON for tilted trees:
-
-```python
-for obj in data:
-    if obj.get("class", "").lower() == "tree trunk" and "diameter_px" in obj:
-        rows.append([file_name, obj["diameter_px"]])
-```
+`utils/dbh_estimator.py` always reads `diameter_px` (Euclidean distance) as the primary source, which is correct for both upright and tilted trunks. The old horizontal projection (`right_x - left_x`) is only used as a legacy fallback when `diameter_px` is absent. No manual fix is needed.
 
 ---
 

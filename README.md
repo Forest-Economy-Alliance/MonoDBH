@@ -14,7 +14,8 @@
 - [DBH Metric Conversion](#dbh-metric-conversion)
 - [Utility Modules](#utility-modules)
 - [Installation](#installation)
-  - [Prerequisites](#prerequisites)
+  - [Docker (Recommended)](#docker-recommended)
+  - [Prerequisites](#prerequisites) *(manual / conda)*
   - [Step-by-step Setup](#step-by-step-setup)
   - [Download Checkpoints](#download-checkpoints)
 - [Usage](#usage)
@@ -121,9 +122,11 @@ Identical architecture to Approach 1, with the following differences:
 
 ## DBH Metric Conversion
 
-**Script:** `utils/dbh_metric_converter.py`
+**Script:** `utils/dbh_estimator.py`
 
-After measuring the trunk width in pixels, real-world DBH is computed from camera intrinsics using the pinhole camera model:
+After the segmentation scripts produce per-image JSON sidecar files, run `dbh_estimator.py` to extract pixel widths, read image dimensions, merge with your field metadata, and compute real-world DBH in centimetres — all in one step.
+
+Real-world DBH is computed using the pinhole camera model:
 
 $$W_{\text{mm}} = \frac{n \cdot S \cdot D_{\text{mm}}}{N \cdot f}$$
 
@@ -137,15 +140,20 @@ $$\text{DBH}_{\text{cm}} = \frac{W_{\text{mm}}}{10}$$
 | $N$ | `image_width` | Full image width in pixels |
 | $f$ | `focal_length` | Camera focal length in mm |
 
-**Input CSV columns required:** `dbh_width`, `sensor_width`, `length`, `image_width`, `focal_length`
+**Usage:** Edit the four path variables at the top of `utils/dbh_estimator.py` and run:
 
-**Usage:**
 ```python
-from utils.dbh_metric_converter import estimate_dbh
-
-df = estimate_dbh("measurements.csv", "measurements_with_dbh.csv")
-print(df[["dbh_width", "estimated_dbh"]])
+JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"
+IMAGE_FOLDER  = "../notebooks/data"
+METADATA_CSV  = "dbh_csv.csv"    # columns: photo, length, sensor_width, focal_length
+OUTPUT_CSV    = "estimated_dbh.csv"
 ```
+
+```bash
+python utils/dbh_estimator.py
+```
+
+Camera parameters (`sensor_width`, `focal_length`) can be found in your camera's EXIF data or specification sheet. `length` is the measured distance from the camera to the trunk in centimetres. If `actual_dbh` is included in the metadata CSV, the script also prints mean absolute error in cm and %.
 
 ---
 
@@ -153,7 +161,8 @@ print(df[["dbh_width", "estimated_dbh"]])
 
 | File | Description |
 |---|---|
-| `utils/dbh_metric_converter.py` | Pixel-to-cm DBH conversion using camera intrinsics |
+| `utils/dbh_estimator.py` | **All-in-one post-processing script**: extracts pixel DBH from JSON, reads image dimensions, merges with field metadata, applies pinhole formula, outputs `estimated_dbh.csv` |
+| `utils/dbh_metric_converter.py` | Low-level pixel-to-cm conversion function (used internally by `dbh_estimator.py`) |
 | `utils/PCA_Implementation.py` | Standalone PCA experiment on tilted tree images (GroundingDINO + SAM 2, largest trunk only) |
 | `utils/NMS_Technique.py` | Standalone NMS experiment on branchy tree images (all detected trunks) |
 | `utils/mask_dictionary_model.py` | `MaskDictionaryModel` / `ObjectInfo` dataclasses for multi-frame mask tracking with IoU-based ID assignment |
@@ -168,7 +177,100 @@ print(df[["dbh_width", "estimated_dbh"]])
 
 ## Installation
 
-### Prerequisites
+### Docker (Recommended)
+
+Docker provides a fully pre-built environment — all C++ extensions (SAM 2, Grounding DINO) are compiled inside the image. No manual `conda`, CUDA toolkit, or compiler setup is needed on the host.
+
+**Prerequisites:**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows / macOS) or Docker Engine (Linux)
+- **GPU:** [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed and `nvidia-smi` working on the host
+- NVIDIA driver ≥ 525
+
+> **CPU-only:** Omit `--gpus all` from every `docker run` command below and drop `--build-arg USE_CUDA=1` at build time. All three scripts fall back to CPU automatically.
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/Forest-Economy-Alliance/MonoDBH
+cd MonoDBH
+```
+
+**2. Build the image**
+
+```bash
+# GPU build (CUDA 12.1) — set TORCH_ARCH to match your GPU:
+#   7.5 = RTX 20xx  |  8.0 = A100  |  8.6 = RTX 30xx  |  8.9 = RTX 40xx
+docker build -t monodbh --build-arg USE_CUDA=1 --build-arg TORCH_ARCH="8.6" .
+
+# CPU-only build:
+docker build -t monodbh .
+```
+
+**3. Download model checkpoints** *(one-time — files are saved to the host via volume mounts)*
+
+```bash
+# Linux / macOS
+docker run --rm \
+  -v "$(pwd)/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" \
+  -v "$(pwd)/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" \
+  monodbh bash -c "cd checkpoints && bash download_ckpts.sh && cd ../gdino_checkpoints && bash download_ckpts.sh"
+```
+
+```powershell
+# Windows (PowerShell)
+docker run --rm `
+  -v "${PWD}/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" `
+  -v "${PWD}/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" `
+  monodbh bash -c "cd checkpoints && bash download_ckpts.sh && cd ../gdino_checkpoints && bash download_ckpts.sh"
+```
+
+**4. Place your images** in `notebooks/data/` (or `notebooks/tilted_trees/`, `notebooks/branches_data/`) on the host.
+
+**5. Run a DBH script**
+
+```bash
+# Linux / macOS (GPU)
+docker run --gpus all --rm \
+  -v "$(pwd)/notebooks:/home/appuser/Grounded-SAM-2/notebooks" \
+  -v "$(pwd)/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" \
+  -v "$(pwd)/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" \
+  monodbh python grounded_sam2_base.py
+```
+
+```powershell
+# Windows (PowerShell + GPU)
+docker run --gpus all --rm `
+  -v "${PWD}/notebooks:/home/appuser/Grounded-SAM-2/notebooks" `
+  -v "${PWD}/checkpoints:/home/appuser/Grounded-SAM-2/checkpoints" `
+  -v "${PWD}/gdino_checkpoints:/home/appuser/Grounded-SAM-2/gdino_checkpoints" `
+  monodbh python grounded_sam2_base.py
+```
+
+Replace `grounded_sam2_base.py` with `grounded_sam2_florence2.py` or `sam2_segmentation.py` as needed. Outputs are written to `notebooks/seg_experiment/` on your host.
+
+**6. Run the metric conversion**
+
+```bash
+# Linux / macOS
+docker run --rm \
+  -v "$(pwd)/notebooks:/home/appuser/Grounded-SAM-2/notebooks" \
+  -v "$(pwd)/utils:/home/appuser/Grounded-SAM-2/utils" \
+  monodbh python utils/dbh_estimator.py
+```
+
+```powershell
+# Windows (PowerShell)
+docker run --rm `
+  -v "${PWD}/notebooks:/home/appuser/Grounded-SAM-2/notebooks" `
+  -v "${PWD}/utils:/home/appuser/Grounded-SAM-2/utils" `
+  monodbh python utils/dbh_estimator.py
+```
+
+> The conda-based manual setup is documented below for users who prefer not to use Docker.
+
+---
+
+### Prerequisites *(manual / conda)*
 
 | Requirement | Version |
 |---|---|
@@ -332,18 +434,21 @@ mask_generator = SAM2AutomaticMaskGenerator(
 
 ### Converting Pixel DBH to Centimetres
 
-Prepare a CSV file with columns: `dbh_width`, `sensor_width`, `length`, `image_width`, `focal_length`.
+Once a segmentation script has produced JSON output files, run `dbh_estimator.py` to go from JSON → estimated DBH in one command:
 
 ```python
-from utils.dbh_metric_converter import estimate_dbh
-
-estimate_dbh(
-    input_csv="path/to/measurements.csv",
-    output_csv="path/to/results.csv"
-)
+# Edit these four variables at the top of utils/dbh_estimator.py:
+JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"
+IMAGE_FOLDER  = "../notebooks/data"
+METADATA_CSV  = "dbh_csv.csv"   # photo, length (cm), sensor_width (mm), focal_length (mm)
+OUTPUT_CSV    = "estimated_dbh.csv"
 ```
 
-Camera parameters (`sensor_width`, `focal_length`) can be found in your camera's EXIF data or specification sheet. `length` is the measured distance from the camera to the trunk in centimetres.
+```bash
+python utils/dbh_estimator.py
+```
+
+Camera parameters (`sensor_width`, `focal_length`) can be found in your camera's EXIF data or spec sheet. `length` is the camera-to-trunk distance in centimetres. Add an `actual_dbh` column to the metadata CSV to get a MAE validation summary.
 
 ---
 
@@ -457,7 +562,7 @@ This code accompanies a journal paper.
 
 > **Full end-to-end reproducibility documentation is in [docs/reproducibility_notes.md](docs/reproducibility_notes.md).**
 >
-> That document covers: the field data collection protocol, which script to use for each tree type (upright / tilted / branchy), how PCA corrects for trunk tilt, how NMS handles complex scenes, the complete JSON output schema, how to extract pixel DBH widths from JSON, the structure of the raw field measurement CSV (`dbh_csv.csv`), the merge workflow in the notebook, the metric conversion formula with a worked numerical example, and a full troubleshooting section.
+> That document covers: the field data collection protocol, which script to use for each tree type (upright / tilted / branchy), how PCA corrects for trunk tilt, how NMS handles complex scenes, the complete JSON output schema, how `dbh_estimator.py` extracts pixel DBH widths and runs metric conversion in a single command, the structure of the field measurement CSV (`dbh_csv.csv`), the conversion formula with a worked numerical example, and a full troubleshooting section.
 
 Key parameter summary for quick reference:
 
