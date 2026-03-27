@@ -217,7 +217,7 @@ def estimate_dbh(df: pd.DataFrame) -> pd.DataFrame:
         W_mm = (dbh_width * sensor_width * D_mm) / (image_width * focal_length)
         DBH_cm = W_mm / 10
 
-    where D_mm = length * 1000  (length is stored in METRES in the metadata CSV).
+    where D_mm = length * 10  (length is stored in CENTIMETRES in the metadata CSV).
     """
     df = df.copy()
 
@@ -231,7 +231,7 @@ def estimate_dbh(df: pd.DataFrame) -> pd.DataFrame:
         print(invalid_rows[['photo'] + numeric_columns])
         df = df.dropna(subset=numeric_columns)
 
-    D_mm = df['length'] * 1000                                    # metres → mm
+    D_mm = df['length'] * 10                                      # cm → mm
     W_mm = (
         df['dbh_width'] * df['sensor_width'] * D_mm
     ) / (df['image_width'] * df['focal_length'])
