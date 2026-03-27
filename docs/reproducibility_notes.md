@@ -9,20 +9,19 @@
 ## Table of Contents
 
 1. [Overview of the Full Pipeline](#1-overview-of-the-full-pipeline)
-2. [Field Data Collection Protocol](#2-field-data-collection-protocol)
-3. [Segmentation Scripts — Which to Use and When](#3-segmentation-scripts--which-to-use-and-when)
-   - 3.1 [Standard upright trees — Grounding DINO + SAM 2](#31-standard-upright-trees--grounding-dino--sam-2)
-   - 3.2 [Tilted / leaning trees — PCA correction](#32-tilted--leaning-trees--pca-correction)
-   - 3.3 [Branchy / complex scenes — NMS correction](#33-branchy--complex-scenes--nms-correction)
-   - 3.4 [Florence-2 + SAM 2 alternative](#34-florence-2--sam-2-alternative)
-   - 3.5 [SAM 2 automatic baseline](#35-sam-2-automatic-baseline)
-4. [Understanding the Segmentation JSON Output](#4-understanding-the-segmentation-json-output)
-5. [Extracting DBH Pixel Width from JSON](#5-extracting-dbh-pixel-width-from-json)
-6. [The Raw Field Measurement CSV](#6-the-raw-field-measurement-csv)
-7. [Merging Pixel Measurements with Field Data](#7-merging-pixel-measurements-with-field-data)
-8. [Converting Pixel DBH to Centimetres](#8-converting-pixel-dbh-to-centimetres)
-9. [Complete Worked Example](#9-complete-worked-example)
-10. [Common Pitfalls and Fixes](#10-common-pitfalls-and-fixes)
+2. [Segmentation Scripts — Which to Use and When](#3-segmentation-scripts--which-to-use-and-when)
+   - 2.1 [Standard upright trees — Grounding DINO + SAM 2](#31-standard-upright-trees--grounding-dino--sam-2)
+   - 2.2 [Tilted / leaning trees — PCA correction](#32-tilted--leaning-trees--pca-correction)
+   - 2.3 [Branchy / complex scenes — NMS correction](#33-branchy--complex-scenes--nms-correction)
+   - 2.4 [Florence-2 + SAM 2 alternative](#34-florence-2--sam-2-alternative)
+   - 2.5 [SAM 2 automatic baseline](#35-sam-2-automatic-baseline)
+3. [Understanding the Segmentation JSON Output](#4-understanding-the-segmentation-json-output)
+4. [Extracting DBH Pixel Width from JSON](#5-extracting-dbh-pixel-width-from-json)
+5. [The Raw Field Measurement CSV](#6-the-raw-field-measurement-csv)
+6. [Merging Pixel Measurements with Field Data](#7-merging-pixel-measurements-with-field-data)
+7. [Converting Pixel DBH to Centimetres](#8-converting-pixel-dbh-to-centimetres)
+8. [Complete Worked Example](#9-complete-worked-example)
+9. [Common Pitfalls and Fixes](#10-common-pitfalls-and-fixes)
 
 ---
 
@@ -62,9 +61,9 @@ The `length` column in the raw CSV is the **physical distance from the camera se
 
 ---
 
-## 3. Segmentation Scripts — Which to Use and When
+## 2. Segmentation Scripts — Which to Use and When
 
-### 3.1 Standard upright trees — Grounding DINO + SAM 2
+### 2.1 Standard upright trees — Grounding DINO + SAM 2
 
 **Script:** `grounded_sam2_base.py`
 
@@ -81,7 +80,7 @@ The pipeline:
 6. Runs PCA on the mask pixels to find the principal axis of the trunk.
 7. Draws the diameter line **perpendicular to the principal axis** at the vertical mid-point of the bounding box.
 
-### 3.2 Tilted / leaning trees — PCA correction
+### 2.2 Tilted / leaning trees — PCA correction
 
 **Script used:** same as 3.1 — PCA is applied in **all three detection-based scripts** by default. There is no separate script to run; the PCA correction is automatic.
 
@@ -98,7 +97,7 @@ The JSON output includes `trunk_angle_deg` — the angle of the trunk's principa
 
 **Validation check:** If `trunk_angle_deg` is unexpectedly low (e.g. < 60°) for a tree that appears upright in the image, the mask likely captured background foliage rather than just the trunk. Inspect the annotated output image.
 
-### 3.3 Branchy / complex scenes — NMS correction
+### 2.3 Branchy / complex scenes — NMS correction
 
 **Script used:** same as 3.1 — NMS is applied in both `grounded_sam2_base.py` and `grounded_sam2_florence2.py`.
 
@@ -113,7 +112,7 @@ The JSON output includes `trunk_angle_deg` — the angle of the trunk's principa
 input_boxes, scores, labels = apply_nms(input_boxes, scores, labels, iou_threshold=0.4)
 ```
 
-### 3.4 Florence-2 + SAM 2 alternative
+### 2.4 Florence-2 + SAM 2 alternative
 
 **Script:** `grounded_sam2_florence2.py`
 
@@ -124,7 +123,7 @@ Key differences from 3.1:
 - Florence-2 does not return confidence scores; dummy scores of `1.0` are used for NMS compatibility.
 - All subsequent steps (connected components, PCA, diameter line) are identical.
 
-### 3.5 SAM 2 automatic baseline
+### 2.5 SAM 2 automatic baseline
 
 **Script:** `sam2_segmentation.py`
 
@@ -138,7 +137,7 @@ Limitations:
 
 ---
 
-## 4. Understanding the Segmentation JSON Output
+## 3. Understanding the Segmentation JSON Output
 
 Each segmentation run produces one `.json` file per image, placed in the output folder alongside the annotated image. The JSON is a list of detection objects.
 
@@ -185,7 +184,7 @@ Each segmentation run produces one `.json` file per image, placed in the output 
 
 ---
 
-## 5. Extracting DBH Pixel Width from JSON
+## 4. Extracting DBH Pixel Width from JSON
 
 **Script:** `utils/dbh_estimator.py`
 
@@ -225,7 +224,7 @@ The script prints a summary table. If `actual_dbh` is present in the metadata CS
 
 ---
 
-## 6. The Raw Field Measurement CSV
+## 5. The Raw Field Measurement CSV
 
 **File:** `dbh_csv.csv` (user-supplied, not committed to the repository)
 
@@ -257,7 +256,7 @@ IMG_0003.jpg,51.0,80,4.25,6.17,4032
 
 ---
 
-## 7. Merging Pixel Measurements with Field Data
+## 6. Merging Pixel Measurements with Field Data
 
 `utils/dbh_estimator.py` handles the merge automatically. After running, `OUTPUT_CSV` contains:
 
@@ -278,7 +277,7 @@ Images in the metadata with no matching JSON output are reported on the console 
 
 ---
 
-## 8. Converting Pixel DBH to Centimetres
+## 7. Converting Pixel DBH to Centimetres
 
 **Script:** `utils/dbh_estimator.py` (conversion is built in — no separate step needed)
 
@@ -314,7 +313,7 @@ The output CSV has `estimated_dbh` (float, cm, 4 decimal places) appended to all
 
 ---
 
-## 9. Complete Worked Example
+## 8. Complete Worked Example
 
 This section walks through the entire pipeline for a single image `IMG_0042.jpg`.
 
@@ -417,7 +416,7 @@ DBH_cm = W_mm / 10
 
 ---
 
-## 10. Common Pitfalls and Fixes
+## 9. Common Pitfalls and Fixes
 
 ### No trunk detection in the JSON
 

@@ -15,6 +15,7 @@
 - [Utility Modules](#utility-modules)
 - [Installation](#installation)
   - [Docker (Recommended)](#docker-recommended)
+  - [Virtual Environment — DBH Estimator Only](#virtual-environment--dbh-estimator-only)
   - [Prerequisites](#prerequisites) *(manual / conda)*
   - [Step-by-step Setup](#step-by-step-setup)
   - [Download Checkpoints](#download-checkpoints)
@@ -267,6 +268,40 @@ docker run --rm `
 ```
 
 > The conda-based manual setup is documented below for users who prefer not to use Docker.
+
+---
+
+### Virtual Environment — DBH Estimator Only
+
+If you only need to run `utils/dbh_estimator.py` (the pixel-to-cm conversion step) and not the segmentation scripts, a plain Python virtual environment is sufficient. No GPU, PyTorch, SAM 2, or Grounding DINO installation is needed.
+
+```bash
+# Linux / macOS
+python3 -m venv .venv
+source .venv/bin/activate
+pip install pillow>=9.4.0 pandas>=2.2.0
+```
+
+```powershell
+# Windows (PowerShell)
+python -m venv .venv
+.venv\Scripts\activate
+pip install pillow>=9.4.0 pandas>=2.2.0
+```
+
+Or install all non-PyTorch runtime dependencies at once:
+
+```bash
+pip install -r requirements.txt
+```
+
+Edit the four path variables at the top of `utils/dbh_estimator.py`, then run:
+
+```bash
+python utils/dbh_estimator.py
+```
+
+See [INSTALL.md](INSTALL.md#virtual-environment--dbh-estimator-only) for full details.
 
 ---
 

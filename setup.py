@@ -13,7 +13,7 @@ VERSION = "1.0"
 DESCRIPTION = "MonoDBH: Monocular Tree DBH Estimation via Segmentation and Scale Reference"
 URL = "https://github.com/Forest-Economy-Alliance/MonoDBH"
 AUTHOR = "[Ashwini Chhatre, Abhijeet Parmar, Nitesh Saini, Mayank Jain]"
-AUTHOR_EMAIL = "[contact email]"
+AUTHOR_EMAIL = "[iofetechforall@gmail.com]"
 LICENSE = "Apache 2.0"
 
 # Read the contents of README file

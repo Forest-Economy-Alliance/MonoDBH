@@ -8,6 +8,7 @@ This document covers everything you need to install the environment, download mo
 
 - [System Requirements](#system-requirements)
 - [Docker Quick-Start (Recommended)](#docker-quick-start-recommended)
+- [Virtual Environment — DBH Estimator Only](#virtual-environment--dbh-estimator-only)
 - [1. Clone the Repository](#1-clone-the-repository) *(manual / conda)*
 - [2. Create a Conda Environment](#2-create-a-conda-environment)
 - [3. Install PyTorch with CUDA](#3-install-pytorch-with-cuda)
@@ -219,6 +220,63 @@ Ensure Docker Desktop has access to the drive. Go to **Settings → Resources �
 
 The `TORCH_ARCH` value contains an architecture not supported by the installed GCC. Use only the compute capability for your GPU (e.g. `"8.6"` for RTX 30xx) instead of a semicolon-separated list.
 </details>
+
+---
+
+## Virtual Environment — DBH Estimator Only
+
+If you only need to run `utils/dbh_estimator.py` (the pixel-to-cm conversion step) and **not** the segmentation scripts, you can skip torch, SAM 2, and Grounding DINO entirely. A plain Python virtual environment with two lightweight packages is all that is needed.
+
+> The segmentation scripts (`grounded_sam2_base.py`, `grounded_sam2_florence2.py`, `sam2_segmentation.py`) require PyTorch, the SAM 2 package, and Grounding DINO. Use Docker or the full conda setup for those.
+
+**1. Create and activate the virtual environment**
+
+```bash
+# Linux / macOS
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+```powershell
+# Windows (PowerShell)
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**2. Install the estimator dependencies**
+
+```bash
+pip install pillow>=9.4.0 pandas>=2.2.0
+```
+
+Or install all non-PyTorch runtime dependencies at once using the `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+**3. Edit the config paths and run**
+
+Open `utils/dbh_estimator.py` and update the four path variables at the top of the file:
+
+```python
+JSON_FOLDER   = "../notebooks/seg_experiment/groundingdino_outputs"
+IMAGE_FOLDER  = "../notebooks/data"
+METADATA_CSV  = "../notebooks/metadata.csv"
+OUTPUT_CSV    = "../notebooks/estimated_dbh.csv"
+```
+
+Then run:
+
+```bash
+python utils/dbh_estimator.py
+```
+
+**4. Deactivate the environment when done**
+
+```bash
+deactivate
+```
 
 ---
 
