@@ -236,7 +236,7 @@ This CSV must be prepared manually from field records. One row per photographed 
 |---|---|---|---|
 | `photo` | string | — | Image filename including extension, e.g. `IMG_0042.jpg`. Must match the filename used in the JSON output. |
 | `actual_dbh` | float | cm | Ground-truth DBH measured with a diameter tape in the field. Used for validation/error computation only, not for the estimation formula. |
-| `length` | float | cm | Distance from camera sensor to trunk surface. In practice, the arm length of the photographer holding the phone against the trunk. |
+| `arm_length` | float | cm | Distance from camera sensor to trunk surface. In practice, the arm length of the photographer holding the phone against the trunk. |
 | `focal_length` | float | mm | Camera focal length. Read from EXIF (`exiftool <image> | grep "Focal Length"`). |
 | `sensor_width` | float | mm | Physical sensor width of the camera. Found in the camera spec sheet or EXIF (`Exif.Photo.FocalPlaneXResolution` + `FocalPlaneResolutionUnit`). |
 | `image_width` | float | px | Full image width in pixels. Added automatically by Cell 2 of the notebook — include this column if it is not already present. |
