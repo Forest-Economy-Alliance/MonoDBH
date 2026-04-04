@@ -1,4 +1,4 @@
-# MonoDBH: Monocular Tree DBH Estimation via Segmentation and Scale Reference
+# MonoDBH: Monocular Tree DBH Estimation Dataset
 
 > **Associated with a journal paper submission.** This repository contains all code, utilities, and instructions required to fully reproduce the results.
 
@@ -592,7 +592,7 @@ For each tree in the study the following steps were performed in the field:
 
 The dataset used in this study — including all field images, ground-truth DBH measurements, and generated outputs — is publicly archived on Zenodo:
 
-> **Zenodo DOI:** _to be assigned upon publication_
+> **Zenodo DOI:** https://doi.org/10.5281/zenodo.19412511
 
 The archive contains:
 
@@ -607,11 +607,11 @@ Once published, the dataset can be cited as:
 ```bibtex
 @dataset{monodbh_dataset2026,
   title     = {MonoDBH: Monocular Tree DBH Estimation Dataset},
-  author    = {[Authors]},
+  author    = {Saini, Nitesh and Parmar, Abhijeet and Chhatre, Ashwini and Thomas, Ewan Nikhil and Yamini and Banerjee, Soumya and Mandal, Sanjoy and Walia, Niharika},
   year      = {2026},
   publisher = {Zenodo},
-  doi       = {to be assigned},
-  url       = {https://zenodo.org/record/XXXXXXX}
+  doi       = {10.5281/zenodo.19412511},
+  url       = {https://doi.org/10.5281/zenodo.19412511}
 }
 ```
 
